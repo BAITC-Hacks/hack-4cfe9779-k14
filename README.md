@@ -161,6 +161,8 @@ API чата создаёт сессии, сохраняет user/assistant со
 
 `ChatService` зависит от абстрактного `LLMClient`, а текущая реализация использует настраиваемый OpenAI-compatible HTTP endpoint без SDK. Модель выдаёт валидируемый Pydantic structured output, но не получает доступ к PostgreSQL, ekt.kz или корзине. Корзина не изменяется ни при каком ответе LLM. Лимит истории и необходимые environment variables приведены в [docs/chat-flow.md](docs/chat-flow.md).
 
+Диалог хранит историю строго внутри `chat session`. Детерминированный router обрабатывает SKU, характеристики, наличие, сертификаты, цены и условия покупки; для свободного текста LLM остаётся только provider-isolated классификатором. Любые факты о товаре берутся исключительно из `CatalogService`: свежие сертификаты/характеристики — через adapter details, наличие/цена — через current availability. Несколько кандидатов вызывают уточнение, а не автоматический выбор. [Условия покупки](docs/purchase-conditions.md) читаются из отдельного reviewable provider; текущие demo placeholders не являются условиями ekt.kz.
+
 ## Подтверждение корзины
 
 Предложение создаётся через `POST /api/chat/sessions/{session_id}/offers`, а подтверждение требует конкретный `offer_id` и `Idempotency-Key` в `POST /api/chat/sessions/{session_id}/offers/{offer_id}/confirm`. Сервис блокирует предложение в транзакции, повторно проверяет EKT и выполняет cart write только при неизменных цене и остатке. При смене цены создаётся новый offer; при недоступности EKT, недостатке остатка или ошибке корзины запись не производится. Полный transaction flow: [docs/offer-confirmation-flow.md](docs/offer-confirmation-flow.md).

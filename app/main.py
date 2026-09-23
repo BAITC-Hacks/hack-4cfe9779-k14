@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes.health import router as health_router
 from app.api.routes.catalog import router as catalog_router
+from app.api.routes.chat import router as chat_router
 from app.config.database import engine
 from app.config.logging import configure_logging
 from app.config.settings import get_settings
@@ -28,6 +29,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.include_router(health_router)
 app.include_router(catalog_router)
+app.include_router(chat_router)
 
 
 @app.exception_handler(ApplicationError)

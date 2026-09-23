@@ -118,6 +118,8 @@ pytest
 | `LLM_API_KEY` | API key LLM, только сервер | не задан |
 | `LLM_MODEL` | Имя модели | не задан |
 | `LLM_HISTORY_MESSAGE_LIMIT` | Максимум сообщений, передаваемых LLM | `12` |
+| `PENDING_OFFER_TTL_SECONDS` | Срок явного подтверждения предложения | `300` |
+| `IDEMPOTENCY_KEY_TTL_SECONDS` | Срок хранения результата подтверждения | `86400` |
 | `ATTACHMENT_MAX_BYTES` | Максимальный размер загрузки | `10485760` |
 | `ATTACHMENT_LLM_MAX_CHARS` | Общий лимит извлечённого текста для LLM | `12000` |
 | `ATTACHMENT_TTL_SECONDS` | Срок хранения нормализованных attachment-данных | `86400` |

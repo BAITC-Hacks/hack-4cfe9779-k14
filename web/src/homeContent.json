@@ -1,0 +1,170 @@
+{
+  "offers": [
+    [
+      {
+        "image": "Mini_banners_137-_1_.jpg",
+        "url": "https://ekt.kz/catalog/novinki/sec_7652fb35a561/"
+      },
+      {
+        "image": "Mini_banners_135.jpg",
+        "url": "https://ekt.kz/catalog/novinki/sec_a896c6a4d63e/"
+      },
+      {
+        "image": "Mini_banners_133.jpg",
+        "url": "https://ekt.kz/catalog/novinki/novinka_tors_iek/"
+      },
+      {
+        "image": "Mini_banners_130.jpg",
+        "url": "https://ekt.kz/catalog/novinki/novinka_kvt/"
+      },
+      {
+        "image": "Mini_banners_127.jpg",
+        "url": "https://ekt.kz/catalog/novinki/novinka_vyklyuchateli_razediniteli_trekhpozitsionnye_vrt_iek/"
+      },
+      {
+        "image": "260x448_ru_konc_iek.png",
+        "url": "https://ekt.kz/catalog/novinki/novinka_vyklyuchateli_kontsevye_iek/"
+      },
+      {
+        "image": "Mini_banners_125-ru.jpg",
+        "url": "https://ekt.kz/catalog/novinki/novinka_toua_gvozdi_3_0kh25mm/"
+      },
+      {
+        "image": "260x448_ru_TRIO.png",
+        "url": "https://ekt.kz/catalog/novinki/novinka_svetilniki_trio/"
+      },
+      {
+        "image": "Mini_banners_123.jpg",
+        "url": "https://ekt.kz/catalog/novinki/novinka_rasshirenie_assortimenta_shchity_plastikovye_fort_ip65/"
+      },
+      {
+        "image": "Mini_banners_121.jpg",
+        "url": "https://ekt.kz/catalog/novinki/novinka_chint/"
+      }
+    ],
+    [
+      {
+        "image": "Mini_banners_93.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/ponizhenie_dku_do_35/"
+      },
+      {
+        "image": "Mini_banners_91.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/bravo_luchshie_tseny/"
+      },
+      {
+        "image": "Mini_banners_43.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/led_dpo_bim_megalight_snizhenie_tsen_ot_10_25/"
+      },
+      {
+        "image": "Mini_banners_45.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/kabel_asvvgng_ponizhenie_do_20/"
+      },
+      {
+        "image": "Mini_banners_27.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/rasprodazha_dekraft/"
+      },
+      {
+        "image": "260kh448-_42_-_1_.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/lenta_bandazhnaya_unit/"
+      },
+      {
+        "image": "Mini_banners_01.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/led_prozhektor_arena_snizhenie_tsen_do_30/"
+      },
+      {
+        "image": "Mini_banners_02.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/rpc_unit/"
+      },
+      {
+        "image": "260_448.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/snizhenie_tsen_na_vsyu_seriyu_atlas_design/"
+      },
+      {
+        "image": "led-spoty.jpg",
+        "url": "https://ekt.kz/catalog/spets_predlozhenie/aktsiya_megalight_spoty_round_i_kvadro/"
+      }
+    ]
+  ],
+  "news": [
+    {
+      "image": "Seminar-660x440.png",
+      "url": "/news/seminar-vladislav-volkov/"
+    },
+    {
+      "image": "Promrukav-660x440.jpg",
+      "url": "/news/novinka-promrukav/"
+    },
+    {
+      "image": "CHINT-660x440-_1_.png",
+      "url": "/news/novinka-vozdushnyy-av-chint/"
+    },
+    {
+      "image": "Mufta-660x440-_2_.png",
+      "url": "/news/novinka-mufty-erg-optima/"
+    },
+    {
+      "image": "660x440_ELEKTROFORUM.png",
+      "url": "/news/elektroforum-kazakhstan-/"
+    },
+    {
+      "image": "IEK-TORS_660x440.png",
+      "url": "/news/novinka-tors-iek/"
+    },
+    {
+      "image": "660x440_IEK_putevka.png",
+      "url": "/news/iek-letnyaya-aktsiya-s-garantirovannymi-prizami/"
+    },
+    {
+      "image": "Vyklyuchateli_660x440.jpg",
+      "url": "/news/vyklyuchateli-razediniteli-trekhpozitsionnye-vrt-iek/"
+    },
+    {
+      "image": "IEK-Korpus-TETRA-660x440.png",
+      "url": "/news/korpusa-plastikovye-s-montazhnoy-panelyu-tetra/"
+    },
+    {
+      "image": "660x440_konc_iek.png",
+      "url": "/news/novinka-vyklyuchateli-kontsevye-iek/"
+    },
+    {
+      "image": "660x440_mk_leg_rex_prom.png",
+      "url": "/news/master-klass-legrand-promrukav-elektroprofi-sds-rexant/"
+    },
+    {
+      "image": "660x440_TRIO.png",
+      "url": "/news/svetilniki-trio/"
+    },
+    {
+      "image": "FORT-660x440.jpg",
+      "url": "/news/rasshirenie-assortimenta-shchity-plastikovye-fort-ip65/"
+    },
+    {
+      "image": "660x440_akciya_chint.png",
+      "url": "/news/chint-darit-podarki/"
+    },
+    {
+      "image": "Chint-660x440.png",
+      "url": "/news/novinka-chint/"
+    },
+    {
+      "image": "Unibox-660x440.jpg",
+      "url": "/news/novinka-shchity-unibox-i-telecom/"
+    },
+    {
+      "image": "660x490_chint_obo_kvt.png",
+      "url": "/news/master-klass/"
+    },
+    {
+      "image": "660x490_Megalight_DEPO.png",
+      "url": "/news/moshchnyy-lineynyy-promyshlennyy-svetilnik-depo/"
+    },
+    {
+      "image": "Quattro_660x440.png",
+      "url": "/news/novinka-elektroustanovochnye-izdeliya-serii-quatro/"
+    },
+    {
+      "image": "660x490_IEK_vkluchaisya.png",
+      "url": "/news/vklyuchaysya-v-zhizn/"
+    }
+  ]
+}

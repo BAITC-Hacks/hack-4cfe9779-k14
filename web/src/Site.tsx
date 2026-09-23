@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import homeContent from './homeContent.json'
 
 const asset = (name: string) => `/reference/${name}`
 const money = (amount: number) => `${new Intl.NumberFormat('ru-RU').format(amount)} ₸`
@@ -15,10 +16,11 @@ type Product = {
   art: 'cable' | 'breaker' | 'lamp' | 'tray'
 }
 
-type IconName = 'pin' | 'search' | 'menu' | 'compare' | 'heart' | 'cart' | 'chevron' | 'phone' | 'spark' | 'close' | 'arrow'
+type IconName = 'pin' | 'search' | 'menu' | 'compare' | 'heart' | 'cart' | 'chevron' | 'phone' | 'spark' | 'close' | 'arrow' | 'camera'
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const base = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true as const }
+  if (name === 'camera') return <svg {...base}><path d="M8 5 10 2h4l2 3h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" /><circle cx="12" cy="12" r="4" /></svg>
   if (name === 'pin') return <svg {...base}><path d="M12 21s7-6.3 7-12a7 7 0 1 0-14 0c0 5.7 7 12 7 12Z" /><circle cx="12" cy="9" r="2.3" /></svg>
   if (name === 'search') return <svg {...base}><circle cx="10.8" cy="10.8" r="6.7" /><path d="m16 16 5 5" /></svg>
   if (name === 'menu') return <svg {...base}><path d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -47,15 +49,20 @@ const categories = [
   ['Корзина Электрика', 'toolbox.jpg'],
 ] as const
 
+// The original serves a separate mobile template. Both sets of artwork are local.
 const banners = [
-  ['Quattro-958x424.png', 'Quattro-313x424.png', 'QUATTRO NEW', 'Розетки/Выключатели/Коробки'],
-  ['Kabel-958x424.png', 'Kabel-313x424.png', 'Кабель по ГОСТ', 'Кабель / Провод'],
+  ['WhatsApp-Video-2026_09_18-at-13.01.08_FQdP.mp4', 'Seminar-313x424-rus.png', 'Семинар для электриков', 'Автоматизация'],
+  ['Lotok-958x424.png', 'Lotok-313x424.png', 'Лотки металлические', 'Кабеленесущие системы'],
+  ['Kompozitsiya-1_10_FQdP.mp4', 'TANDEM-313x424.png', 'Прожектор TANDEM', 'Светильники / Лампы'],
+  ['Kompozitsiya-1_1-_1__FQdP.mp4', 'TSO-313x424.png', 'Прожекторы TANDEM ORIENT SIGNAL', 'Светильники / Лампы'],
+  ['Promrukav-958x424-_1_.jpg', 'Promrukav-313x424-_1_.jpg', 'Монтажные решения Промрукав', 'Изделия для монтажа и инструмент'],
   ['CHINT-958x424.png', 'CHINT-313x424-_1_.png', 'Низковольтная аппаратура CHINT', 'Низковольтная аппаратура'],
+  ['Quattro-958x424.png', 'Quattro-313x424.png', 'QUATTRO', 'Розетки/Выключатели/Коробки'],
+  ['Kabel-958x424.png', 'Kabel-313x424.png', 'Кабель по ГОСТ', 'Кабель / Провод'],
   ['Mufta-958x424-_3_.png', 'Mufta-313x424-_1_.png', 'Муфты ЭРГ Оптима', 'Изделия для монтажа и инструмент'],
   ['958kh424-_-Legrand-_-snizhenie.png', '313kh424-_-Legrand-_-snizhenie.png', 'Legrand', 'Розетки/Выключатели/Коробки'],
   ['KVT_958x424.jpg', 'KVT_313x424.jpg', 'Инструменты КВТ', 'Инструмент / КИП'],
-  ['Lotok-958x424.png', 'Lotok-313x424.png', 'Лотки металлические', 'Кабеленесущие системы'],
-  ['Promrukav-958x424-_1_.jpg', 'Promrukav-313x424-_1_.jpg', 'Промрукав', 'Изделия для монтажа и инструмент'],
+  ['KVT-rus_FQdP.mp4', 'KVT-instrementy-313x424.png', 'Инструменты КВТ', 'Инструмент / КИП'],
 ] as const
 
 const showcase = [
@@ -77,7 +84,7 @@ const specials = [
 const catalogShowcase = [...showcase, ['260x448_ru_konc_iek.png', 'Низковольтная аппаратура']] as const
 const catalogSpecials = [...specials, ['260kh448-unit.jpg', 'Изделия для монтажа и инструмент']] as const
 
-export function SiteHeader({ query, cartCount, onQuery, onHome, onCatalog, onCategory, onCart }: {
+type HeaderProps = {
   query: string
   cartCount: number
   onQuery: (value: string) => void
@@ -85,47 +92,111 @@ export function SiteHeader({ query, cartCount, onQuery, onHome, onCatalog, onCat
   onCatalog: () => void
   onCategory: (value: string) => void
   onCart: () => void
-}) {
+  onAsk: () => void
+}
+
+export function SiteHeader({ query, cartCount, onQuery, onHome, onCatalog, onCategory, onCart, onAsk }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [cityOpen, setCityOpen] = useState(false)
+  const search = <div className="ekt-search"><Icon name="search" size={21} /><input value={query} onChange={event => onQuery(event.target.value)} placeholder="Поиск" aria-label="Поиск товаров" /><button onClick={onAsk} aria-label="Поиск по фото через ассистента"><Icon name="camera" size={21} /></button></div>
+  const phones = <div className="ekt-phones"><Icon name="phone" size={19} /><div><a href="tel:+77002220514">+7(700) 222-05-14</a><a href="tel:+77472220521">+7(747) 222-05-21</a></div></div>
   return <header className="ekt-header">
     <div className="ekt-top"><div className="ekt-container ekt-top-inner">
-      <button className="ekt-city" onClick={() => setCityOpen(value => !value)}><Icon name="pin" size={17} /> Астана</button>
-      <nav className="ekt-top-links" aria-label="Дополнительные ссылки"><a href="https://nursultan.ekt.kz/personal/" target="_blank" rel="noreferrer">Личный кабинет</a><a href="https://pro.ekt.kz/" target="_blank" rel="noreferrer">B2B - EKT PRO</a><a href="https://nursultan.ekt.kz/about/" target="_blank" rel="noreferrer">Покупателям⌄</a><a href="https://nursultan.ekt.kz/about/contacts/" target="_blank" rel="noreferrer">Оставить заявку</a><span>КАЗ</span></nav>
-      <div className="ekt-phones"><Icon name="phone" size={18} /><span>+7 (700) 222-05-14<br />+7 (747) 222-05-21</span></div>
-      <span className="ekt-demo-label">Демо-витрина</span>
+      <button className="ekt-city" aria-label="Выбрать город" aria-expanded={cityOpen} onClick={() => setCityOpen(value => !value)}><Icon name="pin" size={18} /><span>Астана</span></button>
+      <div className="ekt-mobile-search">{search}</div>
+      <nav className="ekt-top-links" aria-label="Дополнительные ссылки"><a href="https://nursultan.ekt.kz/personal/">Личный кабинет</a><a href="https://pro.ekt.kz/">B2B - EKT PRO</a><a href="https://nursultan.ekt.kz/about/">Покупателям <Icon name="chevron" size={16} /></a><a href="https://nursultan.ekt.kz/about/contacts/">Оставить заявку</a><span>КАЗ</span></nav>
+      {phones}
+      <button className="ekt-mobile-menu" aria-label="Открыть меню" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><Icon name="menu" size={27} /></button>
     </div></div>
     <div className="ekt-main-head"><div className="ekt-container ekt-main-inner">
-      <button className="ekt-logo" onClick={onHome} aria-label="На главную"><b>EKT</b><small>ЭЛЕКТРОКОМПЛЕКТ</small><em>Демо-витрина</em></button>
-      <button className="ekt-catalog-button" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}>Каталог <Icon name="menu" size={20} /></button>
-      <label className="ekt-search"><Icon name="search" size={21} /><input value={query} onChange={event => onQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') onCatalog() }} placeholder="Поиск" aria-label="Поиск товаров" /><span>⌕</span></label>
-      <div className="ekt-header-actions"><button title="Сравнение доступно на ekt.kz" disabled><Icon name="compare" /> <span>Сравнить</span></button><button title="Избранное доступно на ekt.kz" disabled><Icon name="heart" /> <span>Избранное</span></button><button onClick={onCart} aria-label={`Корзина, позиций ${cartCount}`}><Icon name="cart" /> <span>Корзина</span><b>{cartCount}</b></button></div>
+      <button className="ekt-logo" onClick={onHome} aria-label="Электрокомплект — на главную"><img src={asset('logo.svg')} alt="Группа компаний Электрокомплект" /></button>
+      <button className="ekt-catalog-button" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}>Каталог <img src={asset('catalog.svg')} alt="" /></button>
+      {search}
+      <div className="ekt-header-actions"><a href="https://nursultan.ekt.kz/catalog/compare/"><Icon name="compare" /><span>Сравнить</span></a><a href="https://nursultan.ekt.kz/personal/favorite/"><Icon name="heart" /><span>Избранное</span></a><button onClick={onCart} aria-label={`Корзина, позиций ${cartCount}`}><img src={asset('cart.svg')} alt="" /><span>Корзина</span><b>{cartCount}</b></button></div>
     </div></div>
-    {menuOpen && <div className="ekt-catalog-menu"><div className="ekt-container"><div className="ekt-menu-title"><strong>Каталог продукции</strong><button onClick={() => setMenuOpen(false)} aria-label="Закрыть каталог"><Icon name="close" /></button></div><div className="ekt-menu-grid">{categories.map(([name, picture]) => <button key={name} onClick={() => { onCategory(name); setMenuOpen(false) }}><img src={asset(picture)} alt="" />{name}</button>)}</div></div></div>}
-    {cityOpen && <div className="ekt-city-popover"><strong>Ваш город Астана?</strong><div><button onClick={() => setCityOpen(false)}>Да</button><button onClick={() => setCityOpen(false)}>Нет</button></div><small>Выбор города в демонстрации не меняет данные каталога.</small></div>}
+    {menuOpen && <div className="ekt-catalog-menu"><div className="ekt-container"><div className="ekt-menu-title"><button onClick={() => { onCatalog(); setMenuOpen(false) }}><strong>Каталог продукции</strong></button><button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню"><Icon name="close" /></button></div><div className="ekt-menu-grid">{categories.map(([name, picture]) => <button key={name} onClick={() => { onCategory(name); setMenuOpen(false) }}><img src={asset(picture)} alt="" />{name}</button>)}</div></div></div>}
+    {cityOpen && <div className="ekt-city-popover"><strong>Ваш город Астана?</strong><div><button onClick={() => setCityOpen(false)}>Да</button><button onClick={() => setCityOpen(false)}>Закрыть</button></div><small>В демонстрации доступны данные для Астаны.</small></div>}
   </header>
 }
 
-export function HomePage({ onCategory, onAsk }: { onCategory: (value: string) => void; onAsk: () => void }) {
-  const [banner, setBanner] = useState(0)
+export function MobileNavigation({ cartCount, route, onHome, onCatalog, onCart }: {
+  cartCount: number; route: string; onHome: () => void; onCatalog: () => void; onCart: () => void
+}) {
+  return <nav className="ekt-mobile-navigation" aria-label="Основная навигация">
+    <button onClick={onHome} aria-current={route === 'home' ? 'page' : undefined}><img src={asset('mobile/icon_home.svg')} alt="" /><span>Главная</span></button>
+    <button onClick={onCatalog} aria-current={route === 'catalog' || route === 'products' ? 'page' : undefined}><img src={asset('mobile/icon_catalog.svg')} alt="" /><span>Каталог</span></button>
+    <a href="https://pro.ekt.kz/"><img src={asset('mobile/icon_ekt_pro.svg')} alt="" /><span>EKT Pro</span></a>
+    <button onClick={onCart} aria-current={route === 'cart' ? 'page' : undefined}><span className="ekt-nav-cart"><img src={asset('mobile/icon_cart.svg')} alt="" /><b>{cartCount}</b></span><span>Корзина</span></button>
+    <a href="https://nursultan.ekt.kz/personal/"><img src={asset('mobile/icon_user.svg')} alt="" /><span>Личный кабинет</span></a>
+  </nav>
+}
+
+function CategoryGrid({ onCategory }: { onCategory: (name: string) => void }) {
+  return <div className="ekt-category-grid">{categories.map(([name, picture], index) => <button key={name} onClick={() => onCategory(name)}><picture><source media="(max-width: 767px)" srcSet={asset(`mobile/category-${String(index + 1).padStart(2, '0')}.svg`)} /><img src={asset(picture)} alt="" /></picture><span>{name}</span></button>)}</div>
+}
+
+function Dots({ count, active, onSelect, label }: { count: number; active: number; onSelect: (index: number) => void; label: string }) {
+  return <div className="ekt-dots">{Array.from({ length: count }, (_, index) => <button key={index} className={index === active ? 'active' : ''} onClick={() => onSelect(index)} aria-label={`${label} ${index + 1}`} aria-pressed={index === active} />)}</div>
+}
+
+type Slide = { image: string; label: string; action: () => void }
+function ImageCarousel({ slides, className = '', initial = 0, desktopInitial }: { slides: Slide[]; className?: string; initial?: number; desktopInitial?: number }) {
+  const track = useRef<HTMLDivElement>(null)
+  const [active, setActive] = useState(initial)
+  function select(index: number, behavior: ScrollBehavior = 'smooth') {
+    const element = track.current
+    const child = element?.children[index] as HTMLElement | undefined
+    if (element && child) element.scrollTo({ left: child.offsetLeft - element.offsetLeft, behavior })
+  }
+  useEffect(() => {
+    const mobile = window.matchMedia('(max-width: 767px)')
+    const reset = () => select(mobile.matches ? initial : desktopInitial ?? initial, 'instant')
+    reset()
+    mobile.addEventListener('change', reset)
+    return () => mobile.removeEventListener('change', reset)
+  }, [initial, desktopInitial])
+  return <div className={`ekt-carousel ${className}`}>
+    <div ref={track} className="ekt-carousel-track" onScroll={() => {
+      const element = track.current
+      if (element && element.children.length > 1) {
+        const step = (element.children[1] as HTMLElement).offsetLeft - (element.children[0] as HTMLElement).offsetLeft
+        const index = Math.round(element.scrollLeft / step)
+        setActive(index % slides.length)
+        if (index >= slides.length) element.scrollTo({ left: element.scrollLeft - step * slides.length, behavior: 'instant' })
+      }
+    }}>{[...slides, ...slides.slice(0, 5)].map((slide, index) => <button className="ekt-carousel-slide" key={`${slide.image}-${index}`} tabIndex={index >= slides.length ? -1 : undefined} aria-hidden={index >= slides.length ? true : undefined} onClick={slide.action}><img src={asset(slide.image)} alt={slide.label} loading="lazy" draggable="false" /></button>)}</div>
+    <Dots count={slides.length} active={active} onSelect={select} label="Слайд" />
+    <div className="ekt-carousel-counter" aria-hidden="true">{slides.length} / {active + 1}</div>
+  </div>
+}
+
+export function HomePage({ onCategory }: { onCategory: (value: string) => void }) {
+  const [banner, setBanner] = useState(2)
+  const [paused, setPaused] = useState(false)
   const [tab, setTab] = useState<'new' | 'sale'>('new')
   const current = banners[banner]
+  useEffect(() => {
+    if (paused || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const timer = window.setInterval(() => setBanner(index => (index + 1) % banners.length), 12000)
+    return () => window.clearInterval(timer)
+  }, [paused])
+  const sideSlides = banners.map(item => ({ image: item[1], label: item[2], action: () => onCategory(item[3]) }))
+  const offers = homeContent.offers[tab === 'new' ? 0 : 1]
+
   return <main className="ekt-home">
     <section className="ekt-container ekt-hero" aria-label="Акции и новинки">
-      <button className="ekt-hero-main" onClick={() => onCategory(current[3])} aria-label={current[2]}><img src={asset(current[0])} alt={current[2]} /></button>
-      <button className="ekt-hero-side" onClick={() => onCategory(current[3])}><img src={asset(current[1])} alt={current[2]} /></button>
-      <div className="ekt-hero-mobile-sides">
-        <button onClick={() => onCategory('Автоматизация')}><img src={asset('Seminar-313x424-rus.png')} alt="Семинар для электриков" /></button>
-        <button onClick={() => onCategory('Кабеленесущие системы')}><img src={asset('Lotok-313x424.png')} alt="Скидки на кабеленесущие системы" /></button>
+      <div className="ekt-hero-stage" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false) }}>
+        <button className="ekt-hero-main" onClick={() => onCategory(current[3])} aria-label={current[2]}>{current[0].endsWith('.mp4') ? <video key={current[0]} src={asset(current[0])} poster={asset(current[0].replace('.mp4', '.jpg'))} autoPlay muted loop playsInline preload="metadata" aria-label={current[2]} /> : <img src={asset(current[0])} alt={current[2]} />}</button>
+        <button className="ekt-slider-arrow left" onClick={() => setBanner((banner + banners.length - 1) % banners.length)} aria-label="Предыдущий баннер">‹</button>
+        <button className="ekt-slider-arrow right" onClick={() => setBanner((banner + 1) % banners.length)} aria-label="Следующий баннер">›</button>
+        <Dots count={banners.length} active={banner} onSelect={setBanner} label="Баннер" />
       </div>
-      <button className="ekt-slider-arrow left" onClick={() => setBanner((banner + banners.length - 1) % banners.length)} aria-label="Предыдущий баннер">‹</button>
-      <button className="ekt-slider-arrow right" onClick={() => setBanner((banner + 1) % banners.length)} aria-label="Следующий баннер">›</button>
-      <div className="ekt-slider-dots">{banners.map((item, index) => <button key={item[0]} className={index === banner ? 'active' : ''} onClick={() => setBanner(index)} aria-label={`Баннер ${index + 1}`} />)}</div>
+      <ImageCarousel slides={sideSlides} className="ekt-hero-sides" initial={2} desktopInitial={4} />
     </section>
-    <section className="ekt-container ekt-home-categories"><h1>Каталог продукции</h1><div className="ekt-category-grid">{categories.map(([name, picture]) => <button key={name} onClick={() => onCategory(name)}><img src={asset(picture)} alt="" /><span>{name}</span></button>)}</div></section>
-    <section className="ekt-container ekt-showcase"><div className="ekt-showcase-tabs"><button className={tab === 'new' ? 'active' : ''} onClick={() => setTab('new')}>Новинки</button><button className={tab === 'sale' ? 'active' : ''} onClick={() => setTab('sale')}>Спец предложения</button></div><div className="ekt-showcase-grid">{(tab === 'new' ? showcase : specials).map(([picture, category]) => <button key={picture} onClick={() => onCategory(category)}><span>{tab === 'new' ? 'NEW' : 'АКЦИЯ'}</span><img src={asset(picture)} alt={category} /></button>)}</div></section>
-    <section className="ekt-about"><div className="ekt-container"><h2>О компании</h2><div className="ekt-about-row"><img src={asset('main-about.jpg')} alt="Торговый зал Электрокомплект" /><div><p>Группа компаний Электрокомплект — производитель и поставщик электротехнической продукции в Казахстане. Компания выпускает кабельно-проводниковую продукцию, трубы, кабельные каналы и щитовое оборудование.</p><p>Наши магазины и собственные торговые марки представлены в разных городах страны. Мы работаем с производителями электротехники и помогаем подобрать оборудование для задач клиентов.</p><p>Работать с нами удобно, надёжно и выгодно.</p></div></div><div className="ekt-benefits">{[['benefits.png', 'Гарантия Качества'], ['hand.png', 'Оптимальная Цена'], ['nal.png', 'Всегда в наличии'], ['ind.png', 'Индивидуальный подход']].map(([picture, label]) => <div key={label}><img src={asset(picture)} alt="" /><span>{label}</span></div>)}</div></div></section>
-    <section className="ekt-more"><h2>Узнать больше</h2><button onClick={onAsk}><Icon name="spark" size={18} /> Спросить ИИ-ассистента</button></section>
+    <section className="ekt-container ekt-home-categories"><h1>Каталог продукции</h1><CategoryGrid onCategory={onCategory} /></section>
+    <section className="ekt-container ekt-showcase"><div className="ekt-showcase-tabs" role="tablist" aria-label="Предложения"><button role="tab" aria-selected={tab === 'new'} className={tab === 'new' ? 'active' : ''} onClick={() => setTab('new')}>Новинки</button><button role="tab" aria-selected={tab === 'sale'} className={tab === 'sale' ? 'active' : ''} onClick={() => setTab('sale')}>Спец предложения</button></div><ImageCarousel key={tab} className="ekt-offers-carousel" slides={offers.map(({ image }, index) => ({ image, label: (tab === 'new' ? catalogShowcase : catalogSpecials)[index]?.[1] || 'Новинки электротехники', action: () => onCategory((tab === 'new' ? catalogShowcase : catalogSpecials)[index]?.[1] || 'Все товары') }))} /></section>
+    <section className="ekt-about"><div className="ekt-container"><h2>О компании</h2><div className="ekt-about-row"><img src={asset('main-about.jpg')} alt="Торговый зал Электрокомплект" loading="lazy" /><div><p>Группа Компаний Электрокомплект – крупнейший производитель и поставщик электротехнической продукции напряжением до 1кВ на рынке Республики Казахстан. На базе нашей компании эффективно реализуется производство: кабельно-проводниковой продукции, труб ПНД и ПВХ, кабельного канала, производство и сборка щитового оборудования.</p><p>ГК ЭлектроКомплект– это не только точки продаж по всему Казахстану, производство и собственные торговые марки, это также долгосрочное сотрудничество с крупнейшими производителями электротехники.</p><p>Мы несем свет и энергию нашим клиентам, гордимся и ценим то, что делаем для своих клиентов! Работать с нами удобно, надежно и выгодно!</p></div></div><div className="ekt-benefits">{[['benefits.png', 'Гарантия Качества'], ['hand.png', 'Оптимальная Цена'], ['nal.png', 'Всегда в наличии'], ['ind.png', 'Индивидуальный подход']].map(([picture, label]) => <div key={label}><img src={asset(picture)} alt="" loading="lazy" /><span>{label}</span></div>)}</div></div></section>
+    <section className="ekt-more"><div className="ekt-container"><h2>Узнать больше</h2><ImageCarousel className="ekt-news-carousel" slides={homeContent.news.map(({ image, url }, index) => ({ image, label: ['Семинар для электриков', 'Монтажные решения Промрукав', 'Новинки CHINT', 'Муфты ЭРГ Оптима'][index] || 'Новости Электрокомплект', action: () => window.location.assign(new URL(url, 'https://nursultan.ekt.kz').href) }))} /></div></section>
   </main>
 }
 
@@ -134,7 +205,7 @@ export function CatalogLandingPage({ onHome, onCategory }: { onHome: () => void;
     <div className="ekt-container">
       <h1>Каталог</h1>
       <nav className="ekt-crumbs"><a href="/" onClick={event => { event.preventDefault(); onHome() }}>Главная</a><span>›</span><span>Каталог</span></nav>
-      <div className="ekt-category-grid">{categories.map(([name, picture]) => <button key={name} onClick={() => onCategory(name)}><img src={asset(picture)} alt="" /><span>{name}</span></button>)}</div>
+      <CategoryGrid onCategory={onCategory} />
     </div>
     <section className="ekt-container ekt-landing-showcase"><h2>Новинки</h2><div className="ekt-showcase-grid ekt-showcase-grid--six">{catalogShowcase.map(([picture, category]) => <button key={picture} onClick={() => onCategory(category)}><span>NEW</span><img src={asset(picture)} alt={category} /></button>)}</div></section>
     <section className="ekt-container ekt-landing-showcase"><h2>Специальные предложения</h2><div className="ekt-showcase-grid ekt-showcase-grid--six">{catalogSpecials.map(([picture, category]) => <button key={picture} onClick={() => onCategory(category)}><img src={asset(picture)} alt={category} /></button>)}</div></section>
@@ -192,7 +263,7 @@ export function SiteFooter() {
         <div className="ekt-newsletter">
           <h3>Подписаться на рассылку</h3>
           <form onSubmit={event => { event.preventDefault(); setNote(true) }}>
-            <input type="email" placeholder="Введите ваш e-mail" aria-label="E-mail" required />
+            <label className="ekt-email-field"><span>Введите ваш e-mail</span><input type="email" aria-label="E-mail" required /></label>
             <select defaultValue="" aria-label="Кто вы"><option value="" disabled>Укажите, кто Вы?</option><option>Потребитель Физ.лицо</option><option>Электрик</option><option>Торгующая Организация</option><option>Монтажная Организация</option><option>Строительная Организация</option><option>Прочее Юр.лицо</option></select>
             <button>Подписаться</button>
           </form>
@@ -205,7 +276,7 @@ export function SiteFooter() {
       <div className="ekt-footer-bottom">
         <div className="ekt-footer-media">
           <a href="https://ekt.kz/Cloudpayments/"><img src={asset('cp-visa-mastercard.jpg')} alt="CloudPayments, Visa и Mastercard" /></a>
-          <a href={`${regionSite}/usloviya-po-rassrochke/`}><img src={asset('footer_rassrochka.jpg')} alt="Рассрочка" /></a>
+          <a href={`${regionSite}/usloviya-po-rassrochke/`}><picture><source media="(max-width: 767px)" srcSet={asset('mobile/kaspi_red.png')} /><img src={asset('footer_rassrochka.jpg')} alt="Рассрочка" /></picture></a>
           <div className="ekt-footer-social">
             <a href="https://www.instagram.com/ekt.kz" aria-label="Instagram"><img src={asset('inst.svg')} alt="" /></a>
             <a href="https://www.facebook.com/ekt.kz/" aria-label="Facebook"><img src={asset('fb.svg')} alt="" /></a>
@@ -216,7 +287,7 @@ export function SiteFooter() {
         </div>
         <div className="ekt-footer-catalog"><h3>Группа компаний Электрокомплект</h3><div>{footerCatalog.map((column, index) => <nav key={index}>{column.map(([label, path]) => <a key={path} href={`${regionSite}${path}`}>{label}</a>)}</nav>)}</div></div>
       </div>
-      <div className="ekt-footer-copy"><span>© 2020 Группа компаний Электрокомплект · Демонстрационная витрина</span><a href={`${regionSite}/polytic/`}>Политика конфиденциальности</a></div>
+      <div className="ekt-footer-copy"><span>© 2020 Группа компаний Электрокомплект</span><a href={`${regionSite}/polytic/`}>Политика конфиденциальности</a></div><small className="ekt-demo-note">Демонстрационная витрина · ИИ-ассистент</small>
     </div></footer>
     <a className="ekt-whatsapp" href={whatsappUrl} target="_blank" rel="noreferrer" aria-label="Открыть WhatsApp Электрокомплект">WhatsApp <img src={asset('whatsapp.svg')} alt="" /></a>
   </>

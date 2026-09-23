@@ -113,3 +113,7 @@ API чата создаёт сессии, сохраняет user/assistant со
 ## Подтверждение корзины
 
 Предложение создаётся через `POST /api/chat/sessions/{session_id}/offers`, а подтверждение требует конкретный `offer_id` и `Idempotency-Key` в `POST /api/chat/sessions/{session_id}/offers/{offer_id}/confirm`. Сервис блокирует предложение в транзакции, повторно проверяет EKT и выполняет cart write только при неизменных цене и остатке. При смене цены создаётся новый offer; при недоступности EKT, недостатке остатка или ошибке корзины запись не производится. Полный transaction flow: [docs/offer-confirmation-flow.md](docs/offer-confirmation-flow.md).
+
+## Вложения
+
+`POST /api/attachments` принимает PDF, DOCX, XLSX, JPEG/JPG и PNG и возвращает нормализованный текст, таблицы, warnings и metadata. Формат проверяется по расширению, MIME type и фактическому содержимому. PDF обрабатывается `pypdf`, DOCX — `python-docx`, XLSX — `openpyxl` в read-only режиме, изображения — Tesseract OCR. Вложения пока не отправляются в LLM. Лимиты и pipeline: [docs/attachments.md](docs/attachments.md).

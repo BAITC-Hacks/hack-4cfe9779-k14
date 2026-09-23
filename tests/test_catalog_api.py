@@ -14,8 +14,8 @@ class ApiCatalogService:
 
         return CatalogCandidate.model_validate(SimpleNamespace(
             id=uuid4(), article=payload.article, external_id=None, name=payload.name,
-            description=None, brand=None, characteristics={}, cached_price=Decimal("1"),
-            cached_stock_by_location=None, cached_available=None,
+            description=None, brand=None, category=None, characteristics={}, cached_price=Decimal("1"),
+            cached_stock_by_location=None, cached_available=None, certificates=None, source_fields=None,
         ))
 
     async def search_candidates(self, query, *, characteristics=None, limit=20):

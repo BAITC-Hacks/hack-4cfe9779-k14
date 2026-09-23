@@ -41,7 +41,8 @@ class Catalog:
     def __init__(self) -> None:
         self.candidate = CatalogCandidate(
             id=uuid4(), article="A-1", external_id="ekt-1", name="Copper cable", description=None,
-            brand="EKT", characteristics={}, cached_price=None, cached_stock_by_location=None, cached_available=None,
+            brand="EKT", category="Cable", characteristics={}, cached_price=None, cached_stock_by_location=None,
+            cached_available=None, certificates=None, source_fields=None,
         )
 
     async def search_candidates(self, query, *, characteristics=None, limit=20):

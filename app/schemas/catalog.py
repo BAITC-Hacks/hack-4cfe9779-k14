@@ -13,10 +13,15 @@ class CatalogProductUpsert(BaseModel):
     external_id: str | None = Field(default=None, max_length=128)
     description: str | None = None
     brand: str | None = Field(default=None, max_length=256)
+    category: str | None = Field(default=None, max_length=256)
     characteristics: dict[str, Any] = Field(default_factory=dict)
     cached_price: Decimal | None = Field(default=None, ge=0)
     cached_stock_by_location: dict[str, int] | None = None
     cached_available: bool | None = None
+    # None: source did not provide certificates; []: source explicitly says none.
+    certificates: list[dict[str, Any]] | None = None
+    # Additional upstream fields after adapter normalization, retained verbatim.
+    source_fields: dict[str, Any] | None = None
 
 
 class CatalogCandidate(BaseModel):
@@ -28,11 +33,14 @@ class CatalogCandidate(BaseModel):
     name: str
     description: str | None
     brand: str | None
+    category: str | None
     characteristics: dict[str, Any]
     # These values are a cache only; no endpoint marks them as current.
     cached_price: Decimal | None
     cached_stock_by_location: dict[str, int] | None
     cached_available: bool | None
+    certificates: list[dict[str, Any]] | None
+    source_fields: dict[str, Any] | None
 
 
 class CatalogSearchResponse(BaseModel):

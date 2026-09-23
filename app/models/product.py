@@ -22,10 +22,17 @@ class Product(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     brand: Mapped[str | None] = mapped_column(String(256), index=True)
+    category: Mapped[str | None] = mapped_column(String(256), index=True)
     characteristics: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}", nullable=False)
     cached_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     cached_stock_by_location: Mapped[dict | None] = mapped_column(JSONB)
     cached_available: Mapped[bool | None] = mapped_column(Boolean)
+    # NULL means the source did not provide this field. An empty list means the
+    # source explicitly reported that no certificates are attached.
+    certificates: Mapped[list[dict] | None] = mapped_column(JSONB)
+    # Preserve normalized-but-unmodelled source fields without making claims
+    # about their meaning. NULL means no source payload was supplied.
+    source_fields: Mapped[dict | None] = mapped_column(JSONB)
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
         server_default=text("''::tsvector"),

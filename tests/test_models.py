@@ -5,6 +5,9 @@ def test_catalog_constraints_and_indexes_exist() -> None:
     product = Product.__table__
     assert product.c.article.unique is True
     assert product.c.characteristics.type.__class__.__name__ == "JSONB"
+    assert "category" in product.c
+    assert "certificates" in product.c
+    assert "source_fields" in product.c
     assert any(index.name == "ix_products_search_vector" for index in product.indexes)
 
 

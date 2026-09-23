@@ -14,8 +14,9 @@ pytestmark = pytest.mark.asyncio
 def local_product(article: str, *, name: str = "Cable", characteristics: dict | None = None):
     return SimpleNamespace(
         id=uuid4(), article=article, external_id=f"remote-{article}", name=name,
-        description=f"{name} description", brand="EKT", characteristics=characteristics or {},
+        description=f"{name} description", brand="EKT", category="Cable", characteristics=characteristics or {},
         cached_price=Decimal("99.00"), cached_stock_by_location={"old": 4}, cached_available=True,
+        certificates=[], source_fields={"data_origin": "test"},
     )
 
 

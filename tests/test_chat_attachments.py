@@ -53,8 +53,8 @@ class FakeCatalogService:
         self.current_articles: list[str] = []
         self.candidate = CatalogCandidate(
             id=uuid4(), article="A-1", external_id="external-A-1", name="Cable", description=None,
-            brand="EKT", characteristics={}, cached_price=Decimal("1.00"), cached_stock_by_location={"local": 1},
-            cached_available=True,
+            brand="EKT", category="Cable", characteristics={}, cached_price=Decimal("1.00"),
+            cached_stock_by_location={"local": 1}, cached_available=True, certificates=None, source_fields=None,
         )
 
     async def search_candidates(self, query, *, characteristics=None, limit=20):

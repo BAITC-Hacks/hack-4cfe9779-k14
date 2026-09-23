@@ -9,6 +9,7 @@ from app.api.routes.catalog import router as catalog_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.offers import router as offers_router
 from app.api.routes.attachments import router as attachments_router
+from app.api.routes.chat_attachments import router as chat_attachments_router
 from app.config.database import engine
 from app.config.logging import configure_logging
 from app.config.settings import get_settings
@@ -32,6 +33,7 @@ app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.include_router(health_router)
 app.include_router(catalog_router)
 app.include_router(chat_router)
+app.include_router(chat_attachments_router)
 app.include_router(offers_router)
 app.include_router(attachments_router)
 

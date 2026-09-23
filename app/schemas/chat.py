@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.attachment_parsing import AttachmentItemMatch
+
 
 class ChatRole(StrEnum):
     USER = "user"
@@ -36,11 +38,14 @@ class ChatMessageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(min_length=1, max_length=4000)
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
 
     @model_validator(mode="after")
     def content_is_not_blank(self) -> "ChatMessageCreate":
         if not self.content.strip():
             raise ValueError("content must not be blank")
+        if len(set(self.attachment_ids)) != len(self.attachment_ids):
+            raise ValueError("attachment_ids must not contain duplicates")
         return self
 
 
@@ -85,3 +90,4 @@ class ChatReply(BaseModel):
     analysis: ChatAnalysis
     candidates: list[dict[str, Any]] = Field(default_factory=list)
     current_data: dict[str, Any] | None = None
+    attachment_items: list[AttachmentItemMatch] = Field(default_factory=list)

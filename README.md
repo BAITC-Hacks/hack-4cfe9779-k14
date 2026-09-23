@@ -1,6 +1,6 @@
 # Chat Service Backend
 
-Базовый backend чат-сервиса на Python, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. В этой версии нет интеграций с ekt.kz, LLM и обработки файлов.
+Базовый backend чат-сервиса на Python, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. Добавлен изолированный серверный адаптер `EktClient` на `httpx`; интеграции с LLM и обработка файлов не входят в проект.
 
 ## Архитектура
 
@@ -9,7 +9,7 @@
 - `app/models` — SQLAlchemy-модели.
 - `app/repositories` — доступ к данным.
 - `app/services` — ошибки и прикладная логика.
-- `app/integrations` — место для будущих внешних интеграций.
+- `app/integrations` — внешние адаптеры; `ekt_client.py` изолирует HTTP API ekt.kz.
 - `app/config` — настройки и подключение к PostgreSQL.
 - `alembic` — миграции схемы.
 
@@ -82,5 +82,12 @@ pytest
 | `POSTGRES_USER` | Пользователь в Compose | `chat` |
 | `POSTGRES_PASSWORD` | Пароль в Compose | обязателен в `.env` |
 | `API_PORT` | Порт API на хосте | `8000` |
+| `EKT_API_BASE_URL` | Базовый URL API ekt.kz | `https://ekt.kz/api/` |
+| `EKT_API_USERNAME` | Basic Auth логин, только сервер | не задан |
+| `EKT_API_PASSWORD` | Basic Auth пароль, только сервер | не задан |
 
 Compose defaults предназначены для локальной разработки. Для общего/боевого окружения задайте собственный пароль через некоммитящийся `.env` или секреты платформы.
+
+## Интеграция ekt.kz
+
+`EktClient` находится в `app/integrations/ekt_client.py`. Credentials `EKT_API_USERNAME` и `EKT_API_PASSWORD` читаются только сервером из environment/`.env`; Compose не отправляет Basic Auth в браузер. Известные GET-пути описаны в `docs/ekt-integration.md`. Формат JSON неизвестен, поэтому адаптер принимает `EktResponseMapper`, который должен быть реализован по документации партнёра. Корзина не подключена: endpoints корзины в материалах не найдены. Mock HTTP tests запускаются вместе с `pytest`.

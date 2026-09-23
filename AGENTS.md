@@ -12,6 +12,7 @@ This repository contains a generic backend skeleton for a chat service. Do not i
 - SQLAlchemy models and the initial Alembic migration cover chat sessions, messages, products with JSONB characteristics/full-text search, pending offers, and idempotency keys.
 - Pending offers and idempotency keys have `created_at` and `expires_at` plus expiry indexes. A scheduled cleanup worker is intentionally not included yet.
 - `.env.example` documents local settings. Real `.env` credentials must stay untracked.
+- `app/integrations/ekt_client.py` is an explicitly requested server-side `httpx` Basic Auth adapter. Use only the documented paths in `docs/ekt-integration.md`; never guess the upstream JSON schema, and keep its mapping in `EktResponseMapper`. Partner credentials come from environment-backed settings only. No cart endpoints are confirmed, so do not invent them.
 - `docker compose up --build` starts PostgreSQL and FastAPI; the API container applies Alembic migrations before serving.
 
 ## Security and behavior constraints

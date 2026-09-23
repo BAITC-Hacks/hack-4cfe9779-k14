@@ -1,6 +1,6 @@
 # Chat Service Backend
 
-Backend чат-сервиса на Python, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. EKT, LLM и обработка пользовательских вложений изолированы в серверных адаптерах и сервисах.
+Backend MVP для подбора товаров ekt.kz: Python 3.12, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. EKT, LLM и обработка файлов изолированы в серверных адаптерах.
 
 ## Архитектура
 
@@ -14,6 +14,29 @@ Backend чат-сервиса на Python, FastAPI, Pydantic, PostgreSQL, SQLAlc
 - `alembic` — миграции схемы.
 
 Каталог хранит характеристики в PostgreSQL `JSONB`, имеет уникальный индексированный артикул и полнотекстовый `tsvector` с GIN-индексом. Триггер PostgreSQL обновляет поисковый вектор при изменении товара. Временные предложения и ключи идемпотентности имеют `created_at`, `expires_at` и индексы истечения срока для последующей очистки.
+
+```mermaid
+flowchart LR
+    User[Пользователь] --> API[FastAPI routes]
+    API --> Chat[ChatService]
+    Chat --> LLM[LLMClient]
+    Chat --> Catalog[CatalogService]
+    Upload[Файл] --> Attachment[AttachmentService]
+    Attachment --> Parser[AttachmentItemParser]
+    Parser --> Catalog
+    Catalog --> DB[(PostgreSQL catalog)]
+    Catalog --> EKT[EktClient]
+    API --> Offer[OfferService]
+    Offer --> EKT
+    Offer --> Cart[CartGateway]
+    Offer --> DB
+```
+
+## Требования
+
+- Docker Engine с Compose v2 для демонстрации; или Python 3.12 и PostgreSQL 16 для локального запуска.
+- Tesseract OCR для JPEG/PNG; Docker image уже содержит движок и English language data.
+- Реальные credentials EKT, LLM и cart contract нужны только для подключения внешних сервисов.
 
 ## Запуск локально
 
@@ -51,6 +74,12 @@ docker compose down
 ```
 
 Чтобы также удалить данные PostgreSQL, используйте `docker compose down -v`.
+
+Проверка после старта:
+
+```bash
+curl http://localhost:8000/health
+```
 
 ## Миграции
 
@@ -91,6 +120,8 @@ pytest
 | `LLM_HISTORY_MESSAGE_LIMIT` | Максимум сообщений, передаваемых LLM | `12` |
 | `ATTACHMENT_MAX_BYTES` | Максимальный размер загрузки | `10485760` |
 | `ATTACHMENT_LLM_MAX_CHARS` | Общий лимит извлечённого текста для LLM | `12000` |
+| `ATTACHMENT_TTL_SECONDS` | Срок хранения нормализованных attachment-данных | `86400` |
+| `CLEANUP_BATCH_SIZE` | Максимум записей каждого типа за один cleanup run | `1000` |
 
 Compose defaults предназначены для локальной разработки. Для общего/боевого окружения задайте собственный пароль через некоммитящийся `.env` или секреты платформы.
 
@@ -125,3 +156,28 @@ API чата создаёт сессии, сохраняет user/assistant со
 `POST /api/attachments` принимает PDF, DOCX, XLSX, JPEG/JPG и PNG и возвращает нормализованный текст, таблицы, warnings и metadata. Формат проверяется по расширению, MIME type и фактическому содержимому. PDF обрабатывается `pypdf`, DOCX — `python-docx`, XLSX — `openpyxl` в read-only режиме, изображения — Tesseract OCR.
 
 Для чата используйте `POST /api/chat/sessions/{session_id}/attachments`, затем добавьте полученные `id` в `attachment_ids` при вызове `POST /api/chat/sessions/{session_id}/messages`. Бинарные файлы не попадают в LLM: в модель передаётся только ограниченный извлечённый текст как недоверенные данные. Позиции из текста и таблиц ищутся через `CatalogService`, а для единственного совпадения цена, остаток и доступность проверяются через EKT. Корзина по вложению не меняется автоматически; требуется существующий `PendingOffer` и явное подтверждение. Полный flow: [docs/chat-attachments.md](docs/chat-attachments.md).
+
+## Очистка временных данных
+
+Нормализованные вложения, expired offers и idempotency keys удаляются командой без дополнительной инфраструктуры:
+
+```bash
+python -m app.maintenance
+```
+
+Запускайте её периодически средствами платформы (например, daily cron/job). Удаление ограничено `CLEANUP_BATCH_SIZE`, поэтому при большой очереди команду следует повторять до нулевого результата.
+
+## Полный пользовательский сценарий
+
+1. Клиент создаёт chat session.
+2. Он отправляет текст или загрузку в эту сессию, а затем `attachment_ids` вместе с сообщением.
+3. `AttachmentService` извлекает данные, `LLMClient` определяет intent, а `CatalogService` выполняет точный поиск по артикулу или полнотекстовый поиск.
+4. При создании предложения `OfferService` получает актуальные цену и остаток у EKT и создаёт `PendingOffer`.
+5. Клиент подтверждает именно возвращённый `offer_id` с `Idempotency-Key`.
+6. `OfferService` блокирует offer, повторно проверяет EKT и только затем вызывает `CartGateway`.
+
+Если EKT недоступен, данные о цене и остатке не подтверждаются. При изменении цены создаётся новое предложение, требующее нового явного подтверждения.
+
+## Ошибки и безопасность
+
+Все ожидаемые ошибки API имеют единый JSON-вид `{ "code": "...", "message": "..." }`; внутренние детали не возвращаются. Результаты review: [docs/security-review.md](docs/security-review.md).

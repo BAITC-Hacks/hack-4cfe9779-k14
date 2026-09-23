@@ -63,27 +63,39 @@
 
 ## Архитектура
 
+Текущая реализация: отдельная React-витрина, FastAPI и PostgreSQL. ИИ вызывается из API; отдельного сервера модели в Compose нет. Схема показывает вызовы и зависимости, а не порядок выполнения одного запроса.
+
 ```mermaid
-flowchart LR
-    Browser["React-витрина web"] --> Proxy["Nginx / Vite proxy"]
-    Proxy --> API["FastAPI API"]
-
+flowchart TB
+    Web["React-витрина и чат"] --> Proxy["Nginx в Docker / Vite в разработке"]
+    Proxy --> API["FastAPI routes"]
     API --> Chat["ChatService"]
-    Chat --> Router["Deterministic router"]
-    Chat -. классификация и ответ по фактам .-> LLM["ResponsesConsultant / LLMClient"]
-    Chat --> Catalog["CatalogService"]
-    Chat --> Offers["OfferProposalCreator"]
+    API --> Catalog["CatalogService"]
+    API --> Files["AttachmentService: локальное извлечение и OCR"]
+    API --> Offers["OfferService: создание и подтверждение"]
 
-    API --> Attachments["AttachmentService"]
-    Attachments --> Chat
-    Catalog --> Database[("PostgreSQL")]
-    Catalog --> Mapper["LiveEktResponseMapper"]
-    Mapper --> EKT["ekt.kz API"]
-    Offers --> OfferService["OfferService"]
-    OfferService -. подтверждённый contract .-> Cart["Cart gateway"]
+    Chat --> Router["DeterministicDialogueRouter"]
+    Chat --> Model["Серверный LLM-клиент при настройке"]
+    Model --> LLM["Внешний API модели"]
+    Chat --> Catalog
+    Chat -->|"только создание предложения"| Offers
+    Offers -->|"CatalogCurrentProductProvider"| Catalog
+    Catalog --> EKT["EktCatalogAdapter → EktClient → EKT API"]
+    Offers --> Cart["UnavailableCartGateway: cart_unavailable"]
+
+    Chat --> Repos["SQLAlchemy repositories"]
+    Catalog --> Repos
+    Offers --> Repos
+    Files -->|"routes сохраняют результат загрузки"| Repos
+    Repos --> DB[("PostgreSQL")]
 ```
 
-Ключевая граница: `CatalogService` — единственная точка доступа к товарным данным для routes и чата. Внешний JSON не выходит за пределы adapter layer, а cached-поля не выдаются за актуальные цену, остатки или доступность.
+- `EktClient` выполняет HTTP-запросы с серверным Basic Auth и разбирает ответы через `LiveEktResponseMapper`. Поиск использует индекс; цена и остатки для ответа и подтверждения запрашиваются заново через `CatalogService`.
+- `ChatService` использует детерминированный роутер и при необходимости модель. `OPENAI_API_KEY` включает `ResponsesConsultant` с OpenAI Responses API; альтернативный `OpenAICompatibleLLMClient` только классифицирует запросы. Без конфигурации используется `UnavailableLLMClient`.
+- Загрузка вложения и сообщение — отдельные запросы. Routes сохраняют извлечённые данные через `ChatAttachmentRepository`; чат читает их по `attachment_ids` и разбирает локально через `AttachmentItemParser`. Вложения и связанные сообщения модели не передаются.
+- `OfferProposalCreator` — интерфейс создания предложения, реализованный `OfferService`, а не отдельный сервис. Подтверждение вызывает только отдельный API endpoint. Реальный gateway корзины отсутствует; аналоги и условия покупки используют недоступные по умолчанию правила/источники.
+
+[Подробная архитектура и реальные маршруты](docs/architecture.md).
 
 ## Быстрый старт
 
@@ -162,25 +174,34 @@ npm run dev --prefix web
 
 ## Безопасность по умолчанию
 
-Диаграмма описывает реализованный протокол для будущего подключения настоящей корзины. В предоставленных материалах есть API товаров, но нет подтверждённых методов чтения и изменения корзины, способа авторизации и привязки корзины к посетителю. Поэтому адаптер реальной корзины ещё не реализован: используется `UnavailableCartGateway`, а подтверждение возвращает `cart_unavailable`. Товар не добавляется, и интерфейс сообщает об этом явно.
+Диаграмма показывает текущую ветку подтверждения при доступных цене и остатках. Настоящая корзина не подключена: выполнение останавливается на `resolve_cart`, до записи и чтения корзины. Проверки успешной записи в `OfferService` подготовлены для будущего gateway, но сейчас не достигаются.
 
 ```mermaid
 sequenceDiagram
     participant U as Пользователь
-    participant C as Клиент
-    participant A as API
+    participant W as React-витрина
+    participant A as FastAPI offers route
     participant O as OfferService
-    participant E as Каталог ekt.kz
-    participant G as Cart gateway
+    participant C as CatalogCurrentProductProvider / CatalogService
+    participant G as UnavailableCartGateway
 
-    U->>C: Подтверждает конкретное предложение
-    C->>A: offer_id + Idempotency-Key
+    U->>W: Нажимает «Да, добавить»
+    W->>A: session_id, offer_id, Idempotency-Key
     A->>O: confirm_offer
-    O->>E: Свежая цена и остаток
-    O->>G: Запись только после проверки
-    O->>G: Обязательный read-after-write
-    G-->>O: Фактическое состояние корзины
-    O-->>C: Подтверждённый результат
+    Note over O: Блокировка предложения, проверка сессии, срока и идемпотентности
+    O->>C: Свежая цена и остатки из EKT
+    C-->>O: Текущие данные товара
+    alt Остатка недостаточно
+        O-->>A: insufficient_stock
+    else Цена изменилась
+        O-->>A: price_changed + новое предложение
+    else Проверки пройдены
+        O->>G: resolve_cart
+        G-->>O: CartUnavailableError
+        O-->>A: cart_unavailable, cart_url = null
+    end
+    A-->>W: Результат подтверждения
+    W-->>U: Повторное подтверждение новой цены или отказ; товар не добавлен
 ```
 
 - **LLM не получает tools, доступ к БД, ekt.kz, корзине или секретам.** Он возвращает классификацию и текст по переданным сервером фактам. Проверка ID/ссылок не гарантирует правильность каждой фразы; качество свободных ответов требует отдельной оценки.

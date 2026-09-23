@@ -1,6 +1,6 @@
 # FastAPI + витрина + ИИ
 
-В `codex/ai-consultant` объединена история `origin/dev2` до `ee916bc`: подбор аналогов по правилам совместимости и подтверждение конкретного предложения. Сохранены витрина `web` и отдельный CLI из `src/`. Прежний `widget` остаётся в репозитории; Compose запускает `web`.
+В `main` перенесена интеграция из `codex/ai-consultant` и объединена история `origin/dev2` до `ee916bc`: подбор аналогов по правилам совместимости и подтверждение конкретного предложения. Сохранены витрина `web` и отдельный CLI из `src/`. Прежний `widget` остаётся в репозитории; Compose запускает `web`.
 
 Стек: Python 3.12, FastAPI, Pydantic v2, SQLAlchemy async, PostgreSQL 16, Alembic (восемь миграций). Точка входа `app.main:app`; маршруты → services → repositories/integrations. Запуск: [web/README.md](../web/README.md).
 

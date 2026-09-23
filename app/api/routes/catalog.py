@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.openapi import public_error_responses
 from app.config.database import get_db
 from app.integrations.catalog_adapter import build_catalog_adapter
 from app.repositories.catalog import CatalogRepository
@@ -27,12 +28,24 @@ def get_catalog_service(session: AsyncSession = Depends(get_db)) -> CatalogServi
 Catalog = Annotated[CatalogService, Depends(get_catalog_service)]
 
 
-@router.post("/products", response_model=CatalogCandidate)
+@router.post(
+    "/products",
+    response_model=CatalogCandidate,
+    operation_id="upsert_catalog_product",
+    summary="Upsert a normalized catalog card",
+    responses=public_error_responses(422),
+)
 async def save_product(payload: CatalogProductUpsert, service: Catalog) -> CatalogCandidate:
     return await service.save_product(payload)
 
 
-@router.get("/search", response_model=CatalogSearchResponse)
+@router.get(
+    "/search",
+    response_model=CatalogSearchResponse,
+    operation_id="search_catalog",
+    summary="Search the local catalog index",
+    responses=public_error_responses(422, 502, 503),
+)
 async def search_products(
     service: Catalog,
     q: str | None = Query(default=None, max_length=500),
@@ -43,17 +56,35 @@ async def search_products(
     return await service.search_candidates(q, characteristics=filters, limit=limit)
 
 
-@router.get("/products/{article}/current", response_model=CurrentAvailability)
+@router.get(
+    "/products/{article}/current",
+    response_model=CurrentAvailability,
+    operation_id="get_current_product_availability",
+    summary="Get current availability without a cache fallback",
+    responses=public_error_responses(422),
+)
 async def current_product_availability(article: str, service: Catalog) -> CurrentAvailability:
     return await service.get_current_availability(article)
 
 
-@router.get("/products/{article}/fresh", response_model=FreshCatalogProduct)
+@router.get(
+    "/products/{article}/fresh",
+    response_model=FreshCatalogProduct,
+    operation_id="get_fresh_product",
+    summary="Get fresh product details from the catalog adapter",
+    responses=public_error_responses(404, 422, 502, 503),
+)
 async def fresh_product_details(article: str, service: Catalog) -> FreshCatalogProduct:
     return await service.get_fresh_product(article)
 
 
-@router.post("/index/refresh", response_model=CatalogIndexRefresh)
+@router.post(
+    "/index/refresh",
+    response_model=CatalogIndexRefresh,
+    operation_id="refresh_catalog_index",
+    summary="Refresh the local catalog index from the adapter",
+    responses=public_error_responses(422, 502, 503),
+)
 async def refresh_catalog_index(
     service: Catalog,
     max_pages: int = Query(default=1000, ge=1, le=1000),

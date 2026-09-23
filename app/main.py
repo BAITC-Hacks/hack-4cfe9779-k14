@@ -22,6 +22,14 @@ settings = get_settings()
 configure_logging(settings.log_level)
 logger = logging.getLogger("chat_service")
 
+OPENAPI_TAGS = [
+    {"name": "health", "description": "Service and PostgreSQL availability."},
+    {"name": "chat", "description": "Session-scoped dialogue and attachments."},
+    {"name": "catalog", "description": "Normalized catalog index and fresh data."},
+    {"name": "offers", "description": "Explicit, idempotent pending-offer confirmation."},
+    {"name": "attachments", "description": "Validated document extraction."},
+]
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -31,13 +39,22 @@ async def lifespan(_: FastAPI):
     logger.info("Stopped %s", settings.app_name)
 
 
-app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    version="1.1.0",
+    description=(
+        "Backend contract for the ekt.kz product assistant. Product facts are server-owned; "
+        "all expected errors use the `{code, message}` envelope."
+    ),
+    openapi_tags=OPENAPI_TAGS,
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.widget_origin],
+    allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Idempotency-Key"],
 )
 app.include_router(health_router)
 app.include_router(catalog_router)

@@ -19,11 +19,13 @@ def test_widget_origin_is_allowed_for_browser_requests() -> None:
             headers={
                 "Origin": "http://localhost:8080",
                 "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "Content-Type, Idempotency-Key",
             },
         )
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:8080"
+    assert "idempotency-key" in response.headers["access-control-allow-headers"].casefold()
 
 
 def test_http_errors_do_not_expose_fastapi_detail_shape() -> None:

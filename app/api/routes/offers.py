@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.openapi import public_error_responses
 from app.config.database import get_db
 from app.integrations.catalog_adapter import build_catalog_adapter
 from app.integrations.cart_gateway import build_cart_gateway
@@ -28,12 +29,25 @@ async def get_offer_service(session: AsyncSession = Depends(get_db)) -> AsyncGen
 Offer = Annotated[OfferService, Depends(get_offer_service)]
 
 
-@router.post("", response_model=PendingOfferView, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=PendingOfferView,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="create_pending_offer",
+    summary="Create a pending offer without modifying the cart",
+    responses=public_error_responses(404, 409, 422, 502, 503),
+)
 async def create_offer(session_id: UUID, payload: CreateOfferRequest, service: Offer) -> PendingOfferView:
     return await service.create_offer(session_id, payload)
 
 
-@router.post("/{offer_id}/confirm", response_model=ConfirmOfferResult)
+@router.post(
+    "/{offer_id}/confirm",
+    response_model=ConfirmOfferResult,
+    operation_id="confirm_pending_offer",
+    summary="Confirm one pending offer with an idempotency key",
+    responses=public_error_responses(400, 404, 409, 422, 502, 503),
+)
 async def confirm_offer(
     session_id: UUID,
     offer_id: UUID,

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.openapi import public_error_responses
 from app.api.routes.attachments import _read_limited
 from app.config.database import get_db
 from app.config.settings import get_settings
@@ -25,7 +26,14 @@ async def get_attachment_repository(session: AsyncSession = Depends(get_db)) -> 
 Attachments = Annotated[ChatAttachmentRepository, Depends(get_attachment_repository)]
 
 
-@router.post("/{session_id}/attachments", response_model=ChatAttachmentView, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{session_id}/attachments",
+    response_model=ChatAttachmentView,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="upload_chat_attachment",
+    summary="Extract and attach a file to one chat session",
+    responses=public_error_responses(404, 413, 415, 422),
+)
 async def upload_chat_attachment(
     session_id: UUID,
     attachments: Attachments,

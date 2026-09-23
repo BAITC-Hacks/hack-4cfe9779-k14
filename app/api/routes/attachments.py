@@ -1,5 +1,6 @@
 from fastapi import APIRouter, File, UploadFile, status
 
+from app.api.openapi import public_error_responses
 from app.config.settings import get_settings
 from app.schemas.attachments import AttachmentResult
 from app.services.attachments import AttachmentService
@@ -8,7 +9,14 @@ from app.services.errors import AttachmentTooLarge
 router = APIRouter(prefix="/api/attachments", tags=["attachments"])
 
 
-@router.post("", response_model=AttachmentResult, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=AttachmentResult,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="extract_attachment",
+    summary="Validate and extract a standalone attachment",
+    responses=public_error_responses(413, 415, 422),
+)
 async def upload_attachment(file: UploadFile = File(...)) -> AttachmentResult:
     """Extract supported user documents; content is not sent to an LLM."""
     content = await _read_limited(file, get_settings().attachment_max_bytes)

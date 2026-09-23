@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.openapi import public_error_responses
 from app.config.database import get_db
 from app.repositories.health import database_is_available
 from app.schemas.health import HealthResponse
@@ -9,7 +10,13 @@ from app.schemas.health import HealthResponse
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    operation_id="health_check",
+    summary="Check API and database health",
+    responses=public_error_responses(503),
+)
 async def health(session: AsyncSession = Depends(get_db)) -> HealthResponse:
     try:
         await database_is_available(session)

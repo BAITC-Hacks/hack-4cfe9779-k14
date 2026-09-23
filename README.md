@@ -29,6 +29,8 @@
 
 Проект удобно использовать как отправную точку для интеграции с реальным каталогом ekt.kz: границы адаптеров, внутренняя модель товара, сессии, вложения, pending offers и ошибки уже определены и протестированы.
 
+Фронтенд не является частью этой поставки: для его команды подготовлен отдельный [browser/API handoff contract](docs/frontend-integration.md), включая OpenAPI, CORS и сценарии отображения ответов.
+
 ## Возможности
 
 | | Возможность | Как это устроено |
@@ -248,6 +250,7 @@ python -m app.maintenance
 | Pending offer и подтверждение | [Offer confirmation flow](docs/offer-confirmation-flow.md) |
 | Загрузка и разбор файлов | [Attachments](docs/attachments.md) · [Chat attachments](docs/chat-attachments.md) |
 | Условия покупки | [Purchase conditions](docs/purchase-conditions.md) |
+| Интеграция отдельного frontend | [Frontend integration contract](docs/frontend-integration.md) |
 | Контракт EKT | [EKT integration](docs/ekt-integration.md) |
 | Безопасность | [Security review](docs/security-review.md) |
 

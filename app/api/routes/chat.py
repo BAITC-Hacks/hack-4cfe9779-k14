@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.openapi import public_error_responses
 from app.config.database import get_db
 from app.integrations.llm_client import LLMConfigurationError, OpenAICompatibleLLMClient, UnavailableLLMClient
 from app.integrations.catalog_adapter import build_catalog_adapter
@@ -47,16 +48,34 @@ async def get_chat_service(session: AsyncSession = Depends(get_db)) -> AsyncGene
 Chat = Annotated[ChatService, Depends(get_chat_service)]
 
 
-@router.post("/sessions", response_model=ChatSessionCreated, status_code=201)
+@router.post(
+    "/sessions",
+    response_model=ChatSessionCreated,
+    status_code=201,
+    operation_id="create_chat_session",
+    summary="Create an isolated chat session",
+)
 async def create_chat_session(service: Chat) -> ChatSessionCreated:
     return await service.create_session()
 
 
-@router.post("/sessions/{session_id}/messages", response_model=ChatReply)
+@router.post(
+    "/sessions/{session_id}/messages",
+    response_model=ChatReply,
+    operation_id="send_chat_message",
+    summary="Send a message and receive a grounded chat reply",
+    responses=public_error_responses(404, 422, 502, 503),
+)
 async def send_chat_message(session_id: UUID, payload: ChatMessageCreate, service: Chat) -> ChatReply:
     return await service.send_message(session_id, payload)
 
 
-@router.get("/sessions/{session_id}/messages", response_model=ChatHistoryResponse)
+@router.get(
+    "/sessions/{session_id}/messages",
+    response_model=ChatHistoryResponse,
+    operation_id="get_chat_history",
+    summary="Read message history for one chat session",
+    responses=public_error_responses(404, 422),
+)
 async def chat_history(session_id: UUID, service: Chat) -> ChatHistoryResponse:
     return await service.history(session_id)

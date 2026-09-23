@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     database_url: str
+    # WIDGET_ORIGIN is retained as a backwards-compatible single-origin fallback.
     widget_origin: str = "http://localhost:8080"
+    cors_allowed_origins: str | None = None
     ekt_api_base_url: str = "https://ekt.kz/api/"
     ekt_api_username: str | None = None
     ekt_api_password: SecretStr | None = None
@@ -32,6 +34,22 @@ class Settings(BaseSettings):
     cleanup_batch_size: int = Field(default=1000, ge=1, le=10_000)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def cors_origins(self) -> tuple[str, ...]:
+        raw_origins = self.cors_allowed_origins or self.widget_origin
+        return tuple(dict.fromkeys(origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()))
+
+    @model_validator(mode="after")
+    def validate_cors_origins(self) -> "Settings":
+        origins = self.cors_origins
+        if not origins:
+            raise ValueError("CORS_ALLOWED_ORIGINS or WIDGET_ORIGIN must contain at least one origin")
+        if "*" in origins:
+            raise ValueError("Wildcard CORS origins are not allowed")
+        if any(not origin.startswith(("http://", "https://")) for origin in origins):
+            raise ValueError("CORS origins must use http:// or https://")
+        return self
 
 
 @lru_cache

@@ -1,57 +1,126 @@
-# ekt.kz Product Assistant Prototype
+<div align="center">
 
-Прототип состоит из браузерного чат-виджета и backend MVP для подбора товаров: Python 3.12, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. EKT, LLM и обработка файлов изолированы в серверных адаптерах.
+# ekt.kz Product Assistant
+
+### Безопасный MVP AI-ассистента для товарного каталога
+
+<p>
+  <img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white">
+  <img alt="PostgreSQL 16" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white">
+  <img alt="Docker Compose" src="https://img.shields.io/badge/Docker_Compose-ready-2496ED?logo=docker&logoColor=white">
+</p>
+
+<p>
+  <a href="#быстрый-старт">Быстрый старт</a> ·
+  <a href="#возможности">Возможности</a> ·
+  <a href="#статус-интеграций">Статус интеграций</a> ·
+  <a href="#документация">Документация</a>
+</p>
+
+</div>
+
+> [!IMPORTANT]
+> Это фундамент MVP, а не имитация интеграции с ekt.kz. В репозитории нет синтетического каталога, фиктивной корзины или вымышленных условий покупки. Пока партнёр не подтвердит контракт, соответствующие операции безопасно возвращают состояние `unavailable`.
+
+## Что это такое
+
+**ekt.kz Product Assistant** — серверная основа для чат-виджета товарного каталога. Она изолирует LLM от фактов и операций изменения состояния: модель может только классифицировать сообщение, а поиск, актуальные сведения о товаре и подтверждение корзины выполняются контролируемыми backend-сервисами.
+
+Проект удобно использовать как отправную точку для интеграции с реальным каталогом ekt.kz: границы адаптеров, внутренняя модель товара, сессии, вложения, pending offers и ошибки уже определены и протестированы.
+
+## Возможности
+
+| | Возможность | Как это устроено |
+| --- | --- | --- |
+| 💬 | Сессионный диалог | История изолирована по chat session; follow-up вопрос использует только контекст своей сессии. |
+| 🔎 | Каталог и поиск | Точный SKU имеет приоритет над текстовым поиском; индекс PostgreSQL поддерживает FTS и JSONB-характеристики. |
+| 🧭 | Grounded-ответы | Факты о товаре поступают только через `CatalogService`, а не из LLM prompt. |
+| 📎 | Вложения | PDF, DOCX, XLSX, JPEG и PNG проходят проверку формата и извлечение данных; бинарные файлы не передаются модели. |
+| 🛒 | Безопасный pending offer | Изменение корзины требует отдельного `offer_id`, явного подтверждения, свежей проверки и ключа идемпотентности. |
+| 🔌 | Заменяемые интеграции | Catalog, LLM, cart, правила аналогов и условия покупки вынесены в независимые service/adapter boundaries. |
+
+## Статус интеграций
+
+| Компонент | Сейчас | Что нужно для включения |
+| --- | --- | --- |
+| Каталог ekt.kz | 🟡 Граница адаптера и Basic Auth клиент готовы, runtime использует `UnavailableCatalogAdapter`. | Подтверждённые JSON-схемы, пагинация и реализация `EktResponseMapper`. |
+| Поиск | 🟡 Локальный PostgreSQL-индекс и API готовы; без загруженного подтверждённого каталога поиск пуст. | Источник и процесс загрузки нормализованных товаров. |
+| LLM | 🟢 Provider-neutral интерфейс и OpenAI-compatible HTTP adapter готовы. | Server-side URL, key и имя модели в `.env`. |
+| Корзина | 🔴 Запись намеренно отключена через `UnavailableCartGateway`. | Контракт ownership, read/write, idempotency и cart URL от партнёра. |
+| Аналоги | 🟡 Архитектура compatibility-first готова и fail-closed. | Утверждённые профили взаимозаменяемости по категориям. |
+| Условия покупки | 🔴 Не сообщаются как факты без утверждённого источника. | Проверяемый источник оплаты, доставки, MOQ и прочих правил. |
+
+<details>
+<summary><strong>Почему это важно?</strong></summary>
+
+Семантическое сходство не означает совместимость, а правдоподобный текст LLM не является данными каталога. Поэтому неизвестные сведения не заполняются предположениями: отсутствие поля, `null`, `0` и пустой список остаются различимыми во внутренней модели.
+
+</details>
 
 ## Архитектура
 
-- `app/api/routes` — HTTP endpoints.
-- `app/schemas` — Pydantic-схемы запросов и ответов.
-- `app/models` — SQLAlchemy-модели.
-- `app/repositories` — доступ к данным.
-- `app/services` — ошибки и прикладная логика.
-- `app/integrations` — внешние адаптеры; `ekt_client.py` изолирует HTTP API ekt.kz.
-- `app/config` — настройки и подключение к PostgreSQL.
-- `alembic` — миграции схемы.
-- `widget` — статический browser chat widget; Nginx проксирует его `/api`-запросы к backend.
-- `api` — API boundary и HTTP-документация; исполняемый Python-пакет остаётся в `app`, чтобы не ломать существующую архитектуру.
-
-Каталог хранит характеристики в PostgreSQL `JSONB`, имеет уникальный индексированный артикул и полнотекстовый `tsvector` с GIN-индексом. Триггер PostgreSQL обновляет поисковый вектор при изменении товара. Временные предложения и ключи идемпотентности имеют `created_at`, `expires_at` и индексы истечения срока для последующей очистки.
-
 ```mermaid
 flowchart LR
-    User[Пользователь] --> API[FastAPI routes]
-    API --> Chat[ChatService]
-    Chat --> LLM[LLMClient]
-    Chat --> Catalog[CatalogService]
-    Chat --> Proposal[OfferProposalCreator]
-    Upload[Файл] --> Attachment[AttachmentService]
-    Attachment --> Parser[AttachmentItemParser]
-    Parser --> Catalog
-    Catalog --> DB[(PostgreSQL catalog)]
-    Catalog --> EKT[EktClient]
-    API --> Offer[OfferService]
-    Offer --> EKT
-    Offer --> Cart[CartGateway]
-    Offer --> DB
+    Browser["Браузер"] --> Widget["Chat widget"]
+    Widget --> API["FastAPI API"]
+
+    API --> Chat["ChatService"]
+    Chat --> Router["Deterministic router"]
+    Chat -. классификация .-> LLM["LLMClient"]
+    Chat --> Catalog["CatalogService"]
+    Chat --> Offers["OfferProposalCreator"]
+
+    API --> Attachments["AttachmentService"]
+    Attachments --> Chat
+    Catalog --> Database[("PostgreSQL")]
+    Catalog -. подтверждённый mapper .-> EKT["ekt.kz API"]
+    Offers --> OfferService["OfferService"]
+    OfferService -. подтверждённый contract .-> Cart["Cart gateway"]
 ```
 
-## Требования
+Ключевая граница: `CatalogService` — единственная точка доступа к товарным данным для routes и чата. Внешний JSON не выходит за пределы adapter layer, а cached-поля не выдаются за актуальные цену, остатки или доступность.
 
-- Docker Engine с Compose v2 для демонстрации; или Python 3.12 и PostgreSQL 16 для локального запуска.
-- Tesseract OCR для JPEG/PNG; Docker image уже содержит движок и English language data.
-- Реальные credentials EKT, LLM и cart contract нужны только для подключения внешних сервисов.
+## Быстрый старт
 
-## Запуск локально
-
-Скопируйте пример настроек и при необходимости измените значения:
+### Docker Compose — рекомендуемый путь
 
 ```bash
 cp .env.example .env
+docker compose up --build
 ```
 
-Запустите PostgreSQL локально, затем установите зависимости и примените миграции:
+После старта:
+
+| Сервис | Адрес |
+| --- | --- |
+| Чат-виджет | [http://localhost:8080](http://localhost:8080) |
+| Swagger UI | [http://localhost:8000/docs](http://localhost:8000/docs) |
+| Healthcheck | [http://localhost:8000/health](http://localhost:8000/health) |
 
 ```bash
+curl http://localhost:8000/health
+# {"status":"ok","database":"ok"}
+```
+
+Остановить контейнеры:
+
+```bash
+docker compose down
+```
+
+Для удаления локальных данных PostgreSQL используйте `docker compose down -v`.
+
+> [!NOTE]
+> Compose поднимает `db`, `api` и `widget`, а API применяет Alembic-миграции до запуска. Виджет и API доступны сразу, но товарные ответы требуют подтверждённого catalog mapper и данных источника.
+
+<details>
+<summary><strong>Запуск без Docker</strong></summary>
+
+Требуются Python 3.12, PostgreSQL 16 и Tesseract OCR для JPEG/PNG.
+
+```bash
+cp .env.example .env
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -59,141 +128,131 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Swagger UI: <http://127.0.0.1:8000/docs>; проверка состояния: <http://127.0.0.1:8000/health>.
+API будет доступен на `http://127.0.0.1:8000`.
 
-## Docker Compose
+</details>
 
-Одной командой запускаются API и PostgreSQL. Compose автоматически применяет миграции перед запуском API:
+## Безопасность по умолчанию
 
-```bash
-cp .env.example .env
-docker compose up --build
+```mermaid
+sequenceDiagram
+    participant U as Пользователь
+    participant C as Клиент
+    participant A as API
+    participant O as OfferService
+    participant E as Каталог ekt.kz
+    participant G as Cart gateway
+
+    U->>C: Подтверждает конкретное предложение
+    C->>A: offer_id + Idempotency-Key
+    A->>O: confirm_offer
+    O->>E: Свежая цена и остаток
+    O->>G: Запись только после проверки
+    O->>G: Обязательный read-after-write
+    G-->>O: Фактическое состояние корзины
+    O-->>C: Подтверждённый результат
 ```
 
-Виджет: <http://127.0.0.1:8080>. Он создаёт chat session и отправляет сообщение в `POST /api/chat/sessions/{session_id}/messages`; при отсутствии LLM backend возвращает безопасный ответ-запрос уточнения. API доступен на <http://127.0.0.1:8000>.
+- **LLM не получает tools, доступ к БД, ekt.kz, корзине или секретам.** Он возвращает только валидируемую структурированную классификацию.
+- **Корзина не изменяется по текстовому «да».** Нужны конкретный `offer_id`, та же сессия, fresh validation и `Idempotency-Key`.
+- **Внешние ошибки не раскрываются клиенту.** Все ожидаемые ошибки имеют форму `{ "code", "message" }`.
+- **Credentials остаются на сервере.** `.env` игнорируется Git; Basic Auth, API keys, URL с секретами и request bodies не попадают в логи.
+- **Вложения недоверенны.** Сервис проверяет размер, расширение, MIME и содержимое; в LLM передаётся лишь ограниченный нормализованный текст.
 
-Остановка контейнеров:
+Подробности: [security review](docs/security-review.md) · [контракт ошибок](docs/api-conventions.md) · [подтверждение корзины](docs/offer-confirmation-flow.md).
 
-```bash
-docker compose down
-```
+## API: краткая карта
 
-Чтобы также удалить данные PostgreSQL, используйте `docker compose down -v`.
+Полная интерактивная спецификация доступна в [Swagger UI](http://localhost:8000/docs) после локального запуска.
 
-Проверка после старта:
-
-```bash
-curl http://localhost:8000/health
-```
-
-## Миграции
-
-```bash
-alembic upgrade head
-alembic revision --autogenerate -m "describe schema change"
-alembic downgrade -1
-```
-
-Для миграций локально необходим доступный PostgreSQL. `DATABASE_URL` задаётся в `.env`; не коммитьте `.env` и реальные пароли.
-
-## Тесты
-
-```bash
-pytest
-```
-
-Тесты health endpoint и моделей не требуют работающего PostgreSQL. Интеграционный health-check можно выполнить при запущенной базе через `curl http://localhost:8000/health`.
-
-## Переменные окружения
-
-| Переменная | Назначение | По умолчанию |
+| Область | Основные endpoints | Назначение |
 | --- | --- | --- |
-| `APP_NAME` | Имя API | `Chat Service API` |
-| `APP_ENV` | Окружение | `development` |
-| `LOG_LEVEL` | Уровень логирования | `INFO` |
-| `DATABASE_URL` | SQLAlchemy DSN | Локальный PostgreSQL `chat` |
-| `WIDGET_ORIGIN` | Разрешённый browser origin для CORS | `http://localhost:8080` |
-| `POSTGRES_DB` | Имя базы в Compose | `chat` |
-| `POSTGRES_USER` | Пользователь в Compose | `chat` |
-| `POSTGRES_PASSWORD` | Пароль в Compose | обязателен в `.env` |
-| `API_PORT` | Порт API на хосте | `8000` |
-| `EKT_API_BASE_URL` | Базовый URL API ekt.kz | `https://ekt.kz/api/` |
-| `EKT_API_USERNAME` | Basic Auth логин, только сервер | не задан |
-| `EKT_API_PASSWORD` | Basic Auth пароль, только сервер | не задан |
-| `EKT_READ_RETRY_COUNT` | Число повторов безопасных EKT GET | `1` |
-| `EKT_RETRY_BACKOFF_SECONDS` | Базовая задержка между GET retry | `0.05` |
-| `LLM_API_URL` | URL OpenAI-compatible LLM endpoint, только сервер | не задан |
-| `LLM_API_KEY` | API key LLM, только сервер | не задан |
-| `LLM_MODEL` | Имя модели | не задан |
-| `LLM_HISTORY_MESSAGE_LIMIT` | Максимум сообщений, передаваемых LLM | `12` |
-| `PENDING_OFFER_TTL_SECONDS` | Срок явного подтверждения предложения | `300` |
-| `IDEMPOTENCY_KEY_TTL_SECONDS` | Срок хранения результата подтверждения | `86400` |
-| `ATTACHMENT_MAX_BYTES` | Максимальный размер загрузки | `10485760` |
-| `ATTACHMENT_LLM_MAX_CHARS` | Общий лимит извлечённого текста для LLM | `12000` |
-| `ATTACHMENT_TTL_SECONDS` | Срок хранения нормализованных attachment-данных | `86400` |
-| `CLEANUP_BATCH_SIZE` | Максимум записей каждого типа за один cleanup run | `1000` |
+| Health | `GET /health` | Проверка доступности API и PostgreSQL. |
+| Чат | `POST /api/chat/sessions`<br>`POST /api/chat/sessions/{id}/messages`<br>`GET /api/chat/sessions/{id}/messages` | Создание сессии, сообщение и история. |
+| Каталог | `GET /api/catalog/search`<br>`GET /api/catalog/products/{article}/fresh`<br>`GET /api/catalog/products/{article}/current` | Поиск и актуализация данных через каталоговый сервис. |
+| Вложения | `POST /api/attachments`<br>`POST /api/chat/sessions/{id}/attachments` | Извлечение или session-scoped загрузка. |
+| Offers | `POST /api/chat/sessions/{id}/offers`<br>`POST /api/chat/sessions/{id}/offers/{offer_id}/confirm` | Создание и безопасное подтверждение предложения. |
 
-Compose defaults предназначены для локальной разработки. Для общего/боевого окружения задайте собственный пароль через некоммитящийся `.env` или секреты платформы.
+> [!WARNING]
+> Наличие endpoints не означает наличие production-интеграции. Catalog и cart вызовы выполняются только после подключения подтверждённых adapter contracts; до этого они fail closed.
 
-## Интеграция ekt.kz
+## Подключение ekt.kz
 
-`EktClient` находится в `app/integrations/ekt_client.py`. Credentials `EKT_API_USERNAME` и `EKT_API_PASSWORD` читаются только сервером из environment/`.env`; Compose не отправляет Basic Auth в браузер. Известные GET-пути описаны в `docs/ekt-integration.md`. Формат JSON неизвестен, поэтому runtime использует `UnavailableCatalogAdapter` до реализации подтверждённого `EktResponseMapper`. Корзина не подключена: endpoints корзины в материалах не найдены.
+Сервис не угадывает API партнёра. На данный момент документированы только следующие read-пути:
 
-Логи приложения выводятся как JSON. Ошибки EKT содержат только тип события, операцию, HTTP-статус и тип исключения; Basic Auth, тела запросов и ответов не логируются.
+```text
+GET /api/products?page=<number>
+GET /api/products/detail?id=<partner-id>
+```
 
-## Каталог и поиск
+После получения актуальной документации от партнёра:
 
-`CatalogService` использует один `CatalogAdapter` и скрывает от API/чата как SQLAlchemy, так и источник данных. Локальный PostgreSQL — заменяемый поисковый индекс. Пока EKT JSON mapper не подтверждён, runtime использует `UnavailableCatalogAdapter`, а поиск по не загруженному каталогу возвращает пустой результат. Точный SKU имеет приоритет; неизвестный SKU не превращается в похожий товар. Обычный текст ищется по названию, категории, описанию, бренду, характеристикам и релевантным source fields через PostgreSQL FTS, а фильтр `characteristics` работает через JSONB containment.
+1. Реализуйте и проверьте `EktResponseMapper` по фактической JSON-схеме.
+2. Сохраните семантику отсутствующих полей через `source_field_presence` — не подставляйте значения по умолчанию.
+3. Подключите mapper к `EktCatalogAdapter` и реализуйте контролируемый процесс обновления индекса.
+4. Подтвердите отдельный cart contract до реализации gateway: cart owner, read/write, идемпотентность и URL корзины.
+5. Добавьте утверждённые правила аналогов и источник условий покупки в соответствующие configuration/service boundaries.
 
-Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Для изменяемых сведений используйте `CatalogService.get_fresh_product(article)` или `get_current_availability(article)`: они обращаются к adapter и не подставляют локальный cache при ошибке источника. Полный контракт и endpoints: [docs/catalog.md](docs/catalog.md).
+Credentials задаются только через environment variables (`EKT_API_USERNAME`, `EKT_API_PASSWORD`) и никогда не должны попадать в исходный код или browser.
 
-Подбор аналогов вынесен в `AnalogService`: сначала свежие карточки проходят fail-closed compatibility filters по категории и обязательным техническим параметрам, затем оставшиеся кандидаты ранжируются по совпадениям и названию. Похожее название само по себе не является заменой. Пока партнёр не утвердил правила, `UnavailableCompatibilityRules` не предлагает аналоги. Необходимые production-критерии и формат explanation описаны в [docs/analog-replacements.md](docs/analog-replacements.md).
+Подробнее: [интеграция ekt.kz](docs/ekt-integration.md) · [каталог и поиск](docs/catalog.md).
 
-Внутренняя модель включает артикул, название, категорию, характеристики, кэшированные остатки по складам, цену, доступность, сертификаты и `source_fields` для дополнительных нормализованных полей. `source_field_presence` различает отсутствие ключа в источнике и переданное значение `null`/`0`/`[]`.
+## Структура проекта
 
-## Чат и LLM
+```text
+.
+├── app/
+│   ├── api/routes/       # FastAPI endpoints
+│   ├── config/           # settings, database, logging, reviewable config
+│   ├── integrations/     # EKT, LLM и cart boundaries
+│   ├── models/           # SQLAlchemy entities
+│   ├── repositories/     # persistence queries
+│   ├── schemas/          # Pydantic contracts
+│   └── services/         # chat, catalog, offers, attachments, analogs
+├── alembic/              # database migrations
+├── docs/                 # architecture and integration contracts
+├── tests/                # unit and integration tests
+├── widget/               # static chat widget + Nginx proxy
+├── docker-compose.yml
+└── .env.example
+```
 
-API чата создаёт сессии, сохраняет user/assistant сообщения и выдаёт историю:
-
-- `POST /api/chat/sessions`
-- `POST /api/chat/sessions/{session_id}/messages`
-- `GET /api/chat/sessions/{session_id}/messages`
-
-`ChatService` зависит от абстрактного `LLMClient`, а текущая реализация использует настраиваемый OpenAI-compatible HTTP endpoint без SDK. Модель выдаёт валидируемый Pydantic structured output, но не получает доступ к PostgreSQL, ekt.kz или корзине. Для cart intent сервер может создать только `pending_offer` по своей свежей карточке и количеству; у LLM нет cart gateway или confirm-operation. Корзина не изменяется ни при каком ответе LLM. Лимит истории и необходимые environment variables приведены в [docs/chat-flow.md](docs/chat-flow.md).
-
-Диалог хранит историю строго внутри `chat session`. Детерминированный router обрабатывает SKU, характеристики, наличие, сертификаты, цены, аналоги и условия покупки; для свободного текста LLM остаётся только provider-isolated классификатором. Любые факты о товаре берутся исключительно из `CatalogService`: свежие сертификаты/характеристики — через adapter details, наличие/цена — через current availability. Аналоги дополнительно проходят `AnalogService` compatibility filters до ranking. Несколько кандидатов вызывают уточнение, а не автоматический выбор. [Условия покупки](docs/purchase-conditions.md) читаются из отдельного reviewable provider; до утверждённого источника они возвращаются как недоступные.
-
-## Подтверждение корзины
-
-Предложение создаётся через `POST /api/chat/sessions/{session_id}/offers`, а подтверждение требует конкретный `offer_id` и `Idempotency-Key` в `POST /api/chat/sessions/{session_id}/offers/{offer_id}/confirm`. Сервис блокирует предложение в транзакции, повторно проверяет EKT и выполняет cart write только при неизменных цене и остатке. После write он обязательно читает корзину и подтверждает результат только по фактической позиции/количеству. При смене цены создаётся новый offer; при недоступности EKT, недостатке остатка, ошибке корзины или несоответствии read-back запись не считается успешной. Пока cart contract не получен, runtime gateway явно недоступен. Полный transaction flow: [docs/offer-confirmation-flow.md](docs/offer-confirmation-flow.md).
-
-## Вложения
-
-`POST /api/attachments` принимает PDF, DOCX, XLSX, JPEG/JPG и PNG и возвращает нормализованный текст, таблицы, warnings и metadata. Формат проверяется по расширению, MIME type и фактическому содержимому. PDF обрабатывается `pypdf`, DOCX — `python-docx`, XLSX — `openpyxl` в read-only режиме, изображения — Tesseract OCR.
-
-Для чата используйте `POST /api/chat/sessions/{session_id}/attachments`, затем добавьте полученные `id` в `attachment_ids` при вызове `POST /api/chat/sessions/{session_id}/messages`. Бинарные файлы не попадают в LLM: в модель передаётся только ограниченный извлечённый текст как недоверенные данные. Позиции из текста и таблиц ищутся через `CatalogService`, а для единственного совпадения цена, остаток и доступность проверяются через EKT. Корзина по вложению не меняется автоматически; требуется существующий `PendingOffer` и явное подтверждение. Полный flow: [docs/chat-attachments.md](docs/chat-attachments.md).
-
-## Очистка временных данных
-
-Нормализованные вложения, expired offers и idempotency keys удаляются командой без дополнительной инфраструктуры:
+## Разработка и качество
 
 ```bash
+# Автотесты
+pytest -q
+
+# Проверка импорта/синтаксиса Python
+python -m compileall -q app
+
+# Применить миграции
+alembic upgrade head
+
+# Очистить временные данные (в production запускается scheduler платформы)
 python -m app.maintenance
 ```
 
-Запускайте её периодически средствами платформы (например, daily cron/job). Удаление ограничено `CLEANUP_BATCH_SIZE`, поэтому при большой очереди команду следует повторять до нулевого результата.
+`PendingOffer`, idempotency keys и нормализованные данные вложений имеют срок жизни. Команда maintenance удаляет истёкшие записи bounded batches; встроенный scheduler намеренно отсутствует.
 
-## Полный пользовательский сценарий
+Ключевые настройки и безопасные значения по умолчанию находятся в [`.env.example`](.env.example). Реальный `.env` не коммитится.
 
-1. Клиент создаёт chat session.
-2. Он отправляет текст или загрузку в эту сессию, а затем `attachment_ids` вместе с сообщением.
-3. `AttachmentService` извлекает данные, `LLMClient` определяет intent, а `CatalogService` выполняет точный поиск по артикулу или полнотекстовый поиск.
-4. Cart intent в чате либо явный `POST /offers` создают `PendingOffer`; сервер получает актуальные цену и остаток через свежую карточку каталога. Никакой текст «да» не подтверждает предложение.
-5. Клиент подтверждает именно возвращённый `offer_id` с `Idempotency-Key`.
-6. `OfferService` блокирует offer, повторно проверяет EKT, вызывает `CartGateway` и читает итоговую корзину. Успех возвращается только когда read-back подтвердил позицию и количество.
+## Документация
 
-Если EKT недоступен, данные о цене и остатке не подтверждаются. При изменении цены создаётся новое предложение, требующее нового явного подтверждения.
+| Тема | Документ |
+| --- | --- |
+| HTTP-формат и ошибки | [API conventions](docs/api-conventions.md) |
+| Каталог, поиск и fresh data | [Catalog](docs/catalog.md) |
+| Диалог и LLM isolation | [Chat flow](docs/chat-flow.md) |
+| Аналоги и compatibility filters | [Analog replacements](docs/analog-replacements.md) |
+| Pending offer и подтверждение | [Offer confirmation flow](docs/offer-confirmation-flow.md) |
+| Загрузка и разбор файлов | [Attachments](docs/attachments.md) · [Chat attachments](docs/chat-attachments.md) |
+| Условия покупки | [Purchase conditions](docs/purchase-conditions.md) |
+| Контракт EKT | [EKT integration](docs/ekt-integration.md) |
+| Безопасность | [Security review](docs/security-review.md) |
 
-## Ошибки и безопасность
+---
 
-Все ожидаемые ошибки API имеют единый JSON-вид `{ "code": "...", "message": "..." }`; внутренние детали не возвращаются. Подробнее: [docs/api-conventions.md](docs/api-conventions.md). Результаты review: [docs/security-review.md](docs/security-review.md).
+<div align="center">
+  <sub>Собрано для безопасного поэтапного подключения реального каталога ekt.kz.</sub>
+</div>

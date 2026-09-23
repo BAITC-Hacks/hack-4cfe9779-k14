@@ -1,4 +1,4 @@
-from app.models import ChatSession, IdempotencyKey, Message, PendingOffer, Product
+from app.models import ChatAttachment, ChatSession, IdempotencyKey, Message, PendingOffer, Product
 
 
 def test_catalog_constraints_and_indexes_exist() -> None:
@@ -9,7 +9,7 @@ def test_catalog_constraints_and_indexes_exist() -> None:
 
 
 def test_temporary_entities_have_expiry_and_creation_time() -> None:
-    for model in (PendingOffer, IdempotencyKey):
+    for model in (PendingOffer, IdempotencyKey, ChatAttachment):
         assert "created_at" in model.__table__.c
         assert "expires_at" in model.__table__.c
         assert any("expires_at" in index.columns.keys() for index in model.__table__.indexes)

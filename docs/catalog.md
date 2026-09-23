@@ -27,6 +27,10 @@
 
 Индексный backend находится за `CatalogRepository`; его можно заменить без изменения `CatalogService` или dialogue layer.
 
+## Аналоги и замены
+
+Подбор замен находится в отдельном `AnalogService` поверх `CatalogService`. Он сначала получает свежие карточки, применяет fail-closed правила `CompatibilityRules` по категории и обязательным техническим параметрам, затем ранжирует только допущенные позиции. Сходство названия не может обойти compatibility filter. Каждый результат содержит структурированное объяснение совпадений, различий и неизвестных полей. Текущие правила кабелей — только demo для mock dataset; подробности и необходимый production-контракт описаны в [analog-replacements.md](analog-replacements.md).
+
 ## API
 
 - `POST /api/catalog/products` — upsert локальной нормализованной карточки.

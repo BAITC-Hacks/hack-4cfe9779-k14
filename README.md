@@ -149,6 +149,8 @@ Compose defaults предназначены для локальной разра
 
 Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Для изменяемых сведений используйте `CatalogService.get_fresh_product(article)` или `get_current_availability(article)`: они обращаются к adapter и не подставляют локальный cache при ошибке источника. Полный контракт и endpoints: [docs/catalog.md](docs/catalog.md).
 
+Подбор аналогов вынесен в `AnalogService`: сначала свежие карточки проходят fail-closed compatibility filters по категории и обязательным техническим параметрам, затем оставшиеся кандидаты ранжируются по совпадениям и названию. Похожее название само по себе не является заменой. Текущие правила кабелей относятся только к mock/demo данным и не утверждены для ekt.kz; необходимые production-критерии и формат explanation описаны в [docs/analog-replacements.md](docs/analog-replacements.md).
+
 Внутренняя модель включает артикул, название, категорию, характеристики, кэшированные остатки по складам, цену, доступность, сертификаты и `source_fields` для дополнительных нормализованных полей. `source_field_presence` различает отсутствие ключа в источнике и переданное значение `null`/`0`/`[]`. [Синтетический demo-каталог](docs/mock-data.md) используется только mock adapter'ом и не является актуальным EKT-источником.
 
 ## Чат и LLM
@@ -161,7 +163,7 @@ API чата создаёт сессии, сохраняет user/assistant со
 
 `ChatService` зависит от абстрактного `LLMClient`, а текущая реализация использует настраиваемый OpenAI-compatible HTTP endpoint без SDK. Модель выдаёт валидируемый Pydantic structured output, но не получает доступ к PostgreSQL, ekt.kz или корзине. Корзина не изменяется ни при каком ответе LLM. Лимит истории и необходимые environment variables приведены в [docs/chat-flow.md](docs/chat-flow.md).
 
-Диалог хранит историю строго внутри `chat session`. Детерминированный router обрабатывает SKU, характеристики, наличие, сертификаты, цены и условия покупки; для свободного текста LLM остаётся только provider-isolated классификатором. Любые факты о товаре берутся исключительно из `CatalogService`: свежие сертификаты/характеристики — через adapter details, наличие/цена — через current availability. Несколько кандидатов вызывают уточнение, а не автоматический выбор. [Условия покупки](docs/purchase-conditions.md) читаются из отдельного reviewable provider; текущие demo placeholders не являются условиями ekt.kz.
+Диалог хранит историю строго внутри `chat session`. Детерминированный router обрабатывает SKU, характеристики, наличие, сертификаты, цены, аналоги и условия покупки; для свободного текста LLM остаётся только provider-isolated классификатором. Любые факты о товаре берутся исключительно из `CatalogService`: свежие сертификаты/характеристики — через adapter details, наличие/цена — через current availability. Аналоги дополнительно проходят `AnalogService` compatibility filters до ranking. Несколько кандидатов вызывают уточнение, а не автоматический выбор. [Условия покупки](docs/purchase-conditions.md) читаются из отдельного reviewable provider; текущие demo placeholders не являются условиями ekt.kz.
 
 ## Подтверждение корзины
 

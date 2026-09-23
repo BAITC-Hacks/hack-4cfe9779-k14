@@ -13,6 +13,7 @@ from app.repositories.attachments import ChatAttachmentRepository
 from app.repositories.chat import ChatRepository
 from app.schemas.chat import ChatHistoryResponse, ChatMessageCreate, ChatReply, ChatSessionCreated
 from app.services.catalog import CatalogService
+from app.services.analogs import AnalogService
 from app.services.chat import ChatService
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -24,11 +25,13 @@ async def get_chat_service(session: AsyncSession = Depends(get_db)) -> AsyncGene
     except LLMConfigurationError:
         llm = UnavailableLLMClient()
     try:
+        catalog = CatalogService(CatalogRepository(session), adapter=build_catalog_adapter())
         yield ChatService(
             repository=ChatRepository(session),
-            catalog=CatalogService(CatalogRepository(session), adapter=build_catalog_adapter()),
+            catalog=catalog,
             llm=llm,
             attachments=ChatAttachmentRepository(session),
+            analogs=AnalogService(catalog),
         )
     finally:
         await llm.aclose()

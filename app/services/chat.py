@@ -9,6 +9,7 @@ from app.integrations.llm_client import LLMClient, LLMClientError
 from app.repositories.attachments import ChatAttachmentRepository
 from app.repositories.chat import ChatRepository
 from app.schemas.attachment_parsing import AttachmentItemMatch, AttachmentLlmContext, ParsedAttachmentItem
+from app.schemas.analogs import AnalogSuggestion
 from app.schemas.attachments import AttachmentResult, DocumentType, ExtractedTable
 from app.schemas.catalog import CurrentAvailability, FreshCatalogProduct
 from app.schemas.chat import (
@@ -23,6 +24,7 @@ from app.schemas.chat import (
 )
 from app.schemas.purchase_conditions import PurchaseConditions
 from app.services.attachment_parser import AttachmentItemParser
+from app.services.analogs import AnalogService
 from app.services.catalog import CatalogService
 from app.services.dialogue_router import DeterministicDialogueRouter, DialogueContext
 from app.services.errors import ApplicationError, ResourceNotFound
@@ -36,6 +38,7 @@ class DialogueResolution:
     current_data: dict[str, Any] | None
     selected_article: str | None
     purchase_conditions: PurchaseConditions | None = None
+    analogs: list[AnalogSuggestion] | None = None
 
 
 class ChatService:
@@ -50,6 +53,7 @@ class ChatService:
         attachment_parser: AttachmentItemParser | None = None,
         router: DeterministicDialogueRouter | None = None,
         purchase_conditions: PurchaseConditionsProvider | None = None,
+        analogs: AnalogService | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
@@ -58,6 +62,7 @@ class ChatService:
         self._attachment_parser = attachment_parser or AttachmentItemParser()
         self._router = router or DeterministicDialogueRouter()
         self._purchase_conditions = purchase_conditions or DemoPurchaseConditionsProvider()
+        self._analogs = analogs
         self._history_limit = get_settings().llm_history_message_limit
 
     async def create_session(self) -> ChatSessionCreated:
@@ -108,6 +113,7 @@ class ChatService:
             current_data=resolution.current_data,
             attachment_items=attachment_items,
             purchase_conditions=resolution.purchase_conditions,
+            analogs=resolution.analogs or [],
         )
 
     async def _analyze(
@@ -146,6 +152,10 @@ class ChatService:
         if analysis.intent == ChatIntent.PURCHASE_CONDITIONS:
             conditions = self._purchase_conditions.get_conditions()
             return DialogueResolution(self._conditions_reply(conditions), [], None, selected_article, conditions)
+        if analysis.intent == ChatIntent.FIND_ANALOG:
+            if not analysis.article:
+                return DialogueResolution("Укажите артикул товара, для которого нужен аналог.", [], None, selected_article)
+            return await self._analog_resolution(analysis.article, selected_article)
         if analysis.intent == ChatIntent.ADD_TO_CART_REQUEST:
             return DialogueResolution(
                 "Товар не добавлен. Для корзины требуется отдельное серверное предложение и явное подтверждение.",
@@ -155,6 +165,12 @@ class ChatService:
             if not analysis.article:
                 return DialogueResolution("Укажите артикул товара для проверки актуальных данных.", [], None, selected_article)
             current = await self._catalog.get_current_availability(analysis.article)
+            if current.current and self._is_out_of_stock(current) and self._analogs is not None:
+                analog_resolution = await self._analog_resolution(analysis.article, analysis.article)
+                return DialogueResolution(
+                    f"{self._current_reply(analysis.intent, current)} {analog_resolution.text}", [],
+                    current.model_dump(mode="json"), analysis.article, analogs=analog_resolution.analogs,
+                )
             return DialogueResolution(
                 self._current_reply(analysis.intent, current), [], current.model_dump(mode="json"),
                 analysis.article if current.current else selected_article,
@@ -200,6 +216,19 @@ class ChatService:
             [], None, selected_article,
         )
 
+    async def _analog_resolution(self, article: str, selected_article: str | None) -> DialogueResolution:
+        if self._analogs is None:
+            return DialogueResolution("Подбор аналогов сейчас недоступен.", [], None, selected_article)
+        try:
+            result = await self._analogs.find_analogs(article)
+        except ResourceNotFound:
+            return DialogueResolution(f"Товар с артикулом {article} не найден.", [], None, selected_article)
+        except ApplicationError:
+            return DialogueResolution("Сейчас не удалось подобрать совместимые аналоги.", [], None, selected_article)
+        return DialogueResolution(
+            self._analogs_reply(result.candidates), [], None, result.source_article, analogs=result.candidates,
+        )
+
     async def _fresh_product(self, article: str) -> tuple[FreshCatalogProduct | None, str | None]:
         try:
             return await self._catalog.get_fresh_product(article), None
@@ -213,6 +242,7 @@ class ChatService:
         return (
             ChatIntent.CHECK_PRICE, ChatIntent.CHECK_STOCK, ChatIntent.CHECK_AVAILABILITY,
             ChatIntent.CHECK_CERTIFICATES, ChatIntent.PRODUCT_CHARACTERISTICS,
+            ChatIntent.FIND_ANALOG,
         )
 
     @staticmethod
@@ -242,6 +272,22 @@ class ChatService:
         if conditions.notice:
             parts.append(conditions.notice)
         return " ".join(parts)
+
+    @staticmethod
+    def _analogs_reply(analogs: list[AnalogSuggestion]) -> str:
+        if not analogs:
+            return "Подходящих совместимых аналогов с подтверждённым наличием не найдено."
+        lines: list[str] = []
+        for analog in analogs[:3]:
+            explanation = analog.explanation
+            matches = ", ".join(item.field for item in explanation.matches) or "нет"
+            differences = ", ".join(item.field for item in explanation.differences) or "нет"
+            unknown = ", ".join(explanation.unknown) or "нет"
+            lines.append(
+                f"{analog.product.name} ({analog.product.article}): совпадает — {matches}; "
+                f"отличается — {differences}; неизвестно — {unknown}."
+            )
+        return "Подходящие совместимые аналоги: " + " ".join(lines)
 
     @staticmethod
     def _certificates_reply(product: FreshCatalogProduct) -> str:
@@ -284,6 +330,13 @@ class ChatService:
             return f"Актуальные остатки по складам: {stock}. Доступность отдельно не предоставлена."
         status = "доступен" if current.available else "нет в наличии"
         return f"Товар {status}. Актуальные остатки по складам: {stock}."
+
+    @staticmethod
+    def _is_out_of_stock(current: CurrentAvailability) -> bool:
+        """Use only an explicit unavailable flag or a known zero stock total."""
+        return current.available is False or (
+            current.stock_by_location is not None and sum(current.stock_by_location.values()) == 0
+        )
 
     async def _attachment_results(self, session_id: UUID, attachment_ids: list[UUID]) -> list[tuple[UUID, AttachmentResult]]:
         if not attachment_ids:

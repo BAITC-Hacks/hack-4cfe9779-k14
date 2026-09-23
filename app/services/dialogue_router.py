@@ -30,6 +30,8 @@ class DeterministicDialogueRouter:
 
         if self._contains(normalized, "оплат", "достав", "минимальн", "услови", "самовывоз"):
             return ChatAnalysis(intent=ChatIntent.PURCHASE_CONDITIONS)
+        if self._contains(normalized, "аналог", "замен", "альтернатив"):
+            return self._product_question(ChatIntent.FIND_ANALOG, article, "Укажите артикул товара, для которого нужен аналог.")
         if self._contains(normalized, "сертифик"):
             return self._product_question(ChatIntent.CHECK_CERTIFICATES, article, "Укажите артикул товара, чтобы проверить сертификаты.")
         if self._contains(normalized, "налич", "остат", "сколько", "есть в наличии"):

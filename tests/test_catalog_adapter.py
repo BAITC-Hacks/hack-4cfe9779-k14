@@ -78,7 +78,7 @@ async def test_mock_adapter_paginates_and_preserves_present_null_vs_missing_fiel
 
     assert [product.article for product in first.products] == ["DEMO-CABLE-VVG-3X2-5", "DEMO-CABLE-VVG-3X1-5"]
     assert first.has_more is True
-    assert len(second.products) == 2 and second.has_more is False
+    assert len(second.products) == 2 and second.has_more is True
     assert unknown_certificate.certificates is None
     assert unknown_certificate.source_field_presence["certificates"] is True
     assert unknown_certificate.source_field_presence["description"] is False
@@ -94,10 +94,10 @@ async def test_index_searches_name_category_and_specifications_with_adapter_inde
     by_category = await service.search_candidates("Кабель и провод")
     by_specification = await service.search_candidates(None, characteristics={"material": "алюминий"})
 
-    assert refreshed.products_loaded == 4
-    assert refreshed.pages_loaded == 2
-    assert len(by_name.candidates) == 3
-    assert len(by_category.candidates) == 4
+    assert refreshed.products_loaded == 5
+    assert refreshed.pages_loaded == 3
+    assert len(by_name.candidates) == 4
+    assert len(by_category.candidates) == 5
     assert [item.article for item in by_specification.candidates] == ["DEMO-CABLE-AL-3X2-5"]
 
 

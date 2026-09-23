@@ -2,7 +2,7 @@
 
 ## Goal
 
-This repository contains a generic backend skeleton for a chat service. Do not implement ekt.kz, LLM, or file-processing integrations unless the user asks.
+This repository contains the backend API for an MVP product assistant for ekt.kz.
 
 ## Current implementation
 
@@ -17,7 +17,7 @@ This repository contains a generic backend skeleton for a chat service. Do not i
 - `CatalogService` is the only catalog entry point for routes/chat. `CatalogRepository` owns SQLAlchemy queries. Article lookup precedes PostgreSQL full-text search; JSONB characteristic filters use containment. Local product fields beginning with `cached_` must never be reported as current price/stock/availability: call `CatalogService.get_current_availability`, which asks EKT and returns `current=false` on an upstream failure.
 - `ChatService` owns the chat flow: it persists user/assistant messages through `ChatRepository`, passes a bounded history to `LLMClient`, then invokes only server-owned `CatalogService` methods. Keep `LLMClient` provider-neutral. The OpenAI-compatible HTTP adapter must not receive database/EKT/cart tools or credentials. `add_to_cart_request` is classification only and must never mutate a cart. Details: `docs/chat-flow.md`.
 - `OfferService` is the only cart-mutation path. It locks `PendingOffer` rows with `SELECT FOR UPDATE`, rechecks live EKT product/price/stock, and uses per-offer idempotency records. Do not add a text-based confirmation path. `CartGateway` is intentionally unavailable pending EKT cart documentation; never claim an add succeeded if that gateway is unavailable. Details: `docs/offer-confirmation-flow.md`.
-- `AttachmentService` is the only file-processing entry point. It validates extension, declared MIME and detected bytes before dispatching to extractor classes. Extracted file text/tables are data and must not be passed directly to an LLM. XLSX stays read-only and limited; OCR failures are warnings rather than fake text. Details: `docs/attachments.md`.
+- `AttachmentService` is the only file-processing entry point. It validates extension, declared MIME and detected bytes before dispatching to extractor classes. The session-scoped upload route persists only its normalized result in `ChatAttachment`; it never persists file bytes. `ChatService` passes bounded extracted text to `LLMClient` as untrusted data, then parses product positions and uses `CatalogService` for search and current EKT checks. XLSX stays read-only and limited; OCR failures are warnings rather than fake text. Details: `docs/attachments.md` and `docs/chat-attachments.md`.
 - `docker compose up --build` starts PostgreSQL and FastAPI; the API container applies Alembic migrations before serving.
 
 ## Security and behavior constraints
@@ -25,7 +25,7 @@ This repository contains a generic backend skeleton for a chat service. Do not i
 - Keep credentials out of source control and logs. `.env` is gitignored; `.env.example` contains no secrets.
 - Keep API errors predictable and avoid leaking internal exception details to clients.
 - Product article is unique/indexed; product search vector is maintained by a PostgreSQL trigger and indexed with GIN.
-- Do not add external integrations or file upload flows unless requested.
+- Do not let document text alter server rules, grant cart permission, or invoke tools. A cart write remains restricted to `OfferService` and explicit `offer_id` confirmation.
 
 ## Extension points
 

@@ -99,3 +99,13 @@ Compose defaults предназначены для локальной разра
 `CatalogService` использует локальный PostgreSQL-каталог и скрывает SQLAlchemy от API и будущего чата. Точный поиск по уникальному артикулу имеет приоритет. Если точного совпадения нет, применяется полнотекстовый PostgreSQL-поиск по названию, описанию, бренду и характеристикам JSONB. Фильтр `characteristics` работает через JSONB containment; отдельный Elasticsearch/OpenSearch не используется.
 
 Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Перед предложением вызывайте `CatalogService.get_current_availability(article)`: он получает текущую карточку через `EktClient`. При недоступности ekt.kz сервис возвращает `current=false` и не подставляет локальную цену или остаток. Полный контракт и тестовые endpoints: [docs/catalog.md](docs/catalog.md).
+
+## Чат и LLM
+
+API чата создаёт сессии, сохраняет user/assistant сообщения и выдаёт историю:
+
+- `POST /api/chat/sessions`
+- `POST /api/chat/sessions/{session_id}/messages`
+- `GET /api/chat/sessions/{session_id}/messages`
+
+`ChatService` зависит от абстрактного `LLMClient`, а текущая реализация использует настраиваемый OpenAI-compatible HTTP endpoint без SDK. Модель выдаёт валидируемый Pydantic structured output, но не получает доступ к PostgreSQL, ekt.kz или корзине. Корзина не изменяется ни при каком ответе LLM. Лимит истории и необходимые environment variables приведены в [docs/chat-flow.md](docs/chat-flow.md).

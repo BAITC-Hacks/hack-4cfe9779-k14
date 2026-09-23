@@ -1,6 +1,6 @@
-# Chat Service Backend
+# ekt.kz Product Assistant Prototype
 
-Backend MVP для подбора товаров ekt.kz: Python 3.12, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. EKT, LLM и обработка файлов изолированы в серверных адаптерах.
+Прототип состоит из браузерного чат-виджета и backend MVP для подбора товаров: Python 3.12, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. EKT, LLM и обработка файлов изолированы в серверных адаптерах.
 
 ## Архитектура
 
@@ -12,6 +12,9 @@ Backend MVP для подбора товаров ekt.kz: Python 3.12, FastAPI, P
 - `app/integrations` — внешние адаптеры; `ekt_client.py` изолирует HTTP API ekt.kz.
 - `app/config` — настройки и подключение к PostgreSQL.
 - `alembic` — миграции схемы.
+- `widget` — статический browser chat widget; Nginx проксирует его `/api`-запросы к backend.
+- `api` — API boundary и HTTP-документация; исполняемый Python-пакет остаётся в `app`, чтобы не ломать существующую архитектуру.
+- `testdata` — явно обозначенные mock/demo данные, не являющиеся данными ekt.kz.
 
 Каталог хранит характеристики в PostgreSQL `JSONB`, имеет уникальный индексированный артикул и полнотекстовый `tsvector` с GIN-индексом. Триггер PostgreSQL обновляет поисковый вектор при изменении товара. Временные предложения и ключи идемпотентности имеют `created_at`, `expires_at` и индексы истечения срока для последующей очистки.
 
@@ -67,6 +70,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Виджет: <http://127.0.0.1:8080>. Он создаёт chat session и отправляет сообщение в `POST /api/chat/sessions/{session_id}/messages`; при отсутствии LLM backend возвращает безопасный ответ-запрос уточнения. API доступен на <http://127.0.0.1:8000>.
+
 Остановка контейнеров:
 
 ```bash
@@ -107,6 +112,7 @@ pytest
 | `APP_ENV` | Окружение | `development` |
 | `LOG_LEVEL` | Уровень логирования | `INFO` |
 | `DATABASE_URL` | SQLAlchemy DSN | Локальный PostgreSQL `chat` |
+| `WIDGET_ORIGIN` | Разрешённый browser origin для CORS | `http://localhost:8080` |
 | `POSTGRES_DB` | Имя базы в Compose | `chat` |
 | `POSTGRES_USER` | Пользователь в Compose | `chat` |
 | `POSTGRES_PASSWORD` | Пароль в Compose | обязателен в `.env` |
@@ -138,6 +144,8 @@ Compose defaults предназначены для локальной разра
 `CatalogService` использует локальный PostgreSQL-каталог и скрывает SQLAlchemy от API и будущего чата. Точный поиск по уникальному артикулу имеет приоритет. Если точного совпадения нет, применяется полнотекстовый PostgreSQL-поиск по названию, описанию, бренду и характеристикам JSONB. Фильтр `characteristics` работает через JSONB containment; отдельный Elasticsearch/OpenSearch не используется.
 
 Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Перед предложением вызывайте `CatalogService.get_current_availability(article)`: он получает текущую карточку через `EktClient`. При недоступности ekt.kz сервис возвращает `current=false` и не подставляет локальную цену или остаток. Полный контракт и тестовые endpoints: [docs/catalog.md](docs/catalog.md).
+
+Внутренняя модель включает артикул, название, категорию, характеристики, кэшированные остатки по складам, цену, доступность, сертификаты и `source_fields` для дополнительных нормализованных полей. `null` означает «неизвестно / не передано», а пустой массив сертификатов — подтверждённое отсутствие сертификатов. [Синтетический demo-каталог](docs/mock-data.md) не загружается и не выдаётся как актуальный источник данных.
 
 ## Чат и LLM
 
@@ -182,4 +190,4 @@ python -m app.maintenance
 
 ## Ошибки и безопасность
 
-Все ожидаемые ошибки API имеют единый JSON-вид `{ "code": "...", "message": "..." }`; внутренние детали не возвращаются. Результаты review: [docs/security-review.md](docs/security-review.md).
+Все ожидаемые ошибки API имеют единый JSON-вид `{ "code": "...", "message": "..." }`; внутренние детали не возвращаются. Подробнее: [docs/api-conventions.md](docs/api-conventions.md). Результаты review: [docs/security-review.md](docs/security-review.md).

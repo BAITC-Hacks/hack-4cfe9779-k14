@@ -20,6 +20,7 @@ services:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-chat}
+      WIDGET_ORIGIN: ${WIDGET_ORIGIN:-http://localhost:8080}
       EKT_API_BASE_URL: ${EKT_API_BASE_URL:-https://ekt.kz/api/}
       EKT_API_USERNAME: ${EKT_API_USERNAME:-}
       EKT_API_PASSWORD: ${EKT_API_PASSWORD:-}
@@ -41,6 +42,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  widget:
+    build:
+      context: ./widget
+    ports:
+      - "${WIDGET_PORT:-8080}:80"
+    depends_on:
+      - api
 
 volumes:
   postgres_data:

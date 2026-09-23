@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     database_url: str
+    widget_origin: str = "http://localhost:8080"
     ekt_api_base_url: str = "https://ekt.kz/api/"
     ekt_api_username: str | None = None
     ekt_api_password: SecretStr | None = None

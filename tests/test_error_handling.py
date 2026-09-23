@@ -12,6 +12,20 @@ def test_validation_errors_have_the_public_error_shape() -> None:
     assert response.json() == {"code": "validation_error", "message": "Request validation failed"}
 
 
+def test_widget_origin_is_allowed_for_browser_requests() -> None:
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/chat/sessions",
+            headers={
+                "Origin": "http://localhost:8080",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8080"
+
+
 def test_http_errors_do_not_expose_fastapi_detail_shape() -> None:
     @app.get("/_test_http_error")
     async def test_http_error() -> None:

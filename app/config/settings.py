@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     attachment_max_xlsx_rows: int = 10000
     attachment_max_xlsx_columns: int = 100
     attachment_llm_max_chars: int = 12000
+    attachment_ttl_seconds: int = Field(default=86400, ge=60, le=2_592_000)
+    cleanup_batch_size: int = Field(default=1000, ge=1, le=10_000)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

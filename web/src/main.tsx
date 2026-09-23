@@ -5,7 +5,7 @@ import './styles.css'
 import './site.css'
 import { CartPage, CatalogLandingPage, CatalogPage, HomePage, MobileNavigation, SiteFooter, SiteHeader } from './Site'
 
-import { apiEnabled, confirmOffer, createOffer, freshProduct, history, searchCatalog, sendMessage, uploadAttachment, type Product } from './api'
+import { apiEnabled, loadCatalogPage, runtimeStatus, type Offer, confirmOffer, createOffer, freshProduct, history, searchCatalog, sendMessage, uploadAttachment, type Product } from './api'
 
 type Proposal = {
   key: string
@@ -153,6 +153,9 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'assistant', text: 'Здравствуйте! Помогу подобрать товар, проверить наличие и найти аналог. Что вас интересует?' }])
   const [catalog, setCatalog] = useState<Product[]>(apiEnabled ? [] : products)
   const [catalogStatus, setCatalogStatus] = useState('')
+  const [catalogPage, setCatalogPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [catalogSource, setCatalogSource] = useState('')
   const [connection, setConnection] = useState(apiEnabled ? 'Подключение…' : 'Локальное демо')
   const actionRef = useRef(false)
   const endRef = useRef<HTMLDivElement>(null)
@@ -168,10 +171,11 @@ function App() {
     let cancelled = false
     actionRef.current = true
     setBusy(true)
-    history().then(data => {
+    Promise.all([history(), runtimeStatus()]).then(([data, status]) => {
       if (cancelled) return
       if (data.messages.length) setMessages(data.messages.map(message => ({ role: message.role, text: message.content })))
-      setConnection('Подключено · прототип')
+      setCatalogSource(status.catalog_source)
+      setConnection(status.model_configured ? 'ИИ подключён · прототип' : 'Каталог · без ИИ')
     }).catch(error => {
       if (!cancelled) { setConnection('Нет связи с сервером'); setMessages(current => [...current, { role: 'assistant', text: error.message }]) }
     }).finally(() => { if (!cancelled) { actionRef.current = false; setBusy(false) } })
@@ -183,12 +187,16 @@ function App() {
     setCatalogStatus('Загрузка каталога сервера…')
     setCatalog([])
     const timer = window.setTimeout(() => {
-      searchCatalog(query, controller.signal).then(items => {
-        if (!controller.signal.aborted) { setCatalog(items); setCatalogStatus('') }
+      const search = query.trim() || (category === 'Все товары' ? '' : category)
+      const load = search
+        ? searchCatalog(search, controller.signal).then(products => ({products, hasMore: false}))
+        : loadCatalogPage(catalogPage, controller.signal)
+      load.then(result => {
+        if (!controller.signal.aborted) { setCatalog(result.products); setHasMore(result.hasMore); setCatalogStatus('') }
       }).catch(error => { if (!controller.signal.aborted) setCatalogStatus(error.message) })
     }, 250)
     return () => { window.clearTimeout(timer); controller.abort() }
-  }, [query])
+  }, [query, category, catalogPage])
   useEffect(() => { if (!apiEnabled) localStorage.setItem('ekt-demo-cart', JSON.stringify(cart)) }, [cart])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, pending, chatOpen])
   useEffect(() => {
@@ -228,11 +236,14 @@ function App() {
     else append({ role: 'assistant', text: product.stock ? `В наличии ${product.stock} ${product.unit}. ${product.specs.join('; ')}. Данные и цена в этой витрине демонстрационные.` : `Сейчас нет в наличии. ${product.specs.join('; ')}. Могу показать аналог.`, cards: [product] })
   }
 
-  const offerProposal = async (product: Product, quantity: number) => {
-    const offer = await createOffer(product, quantity)
-    const proposal = { key: crypto.randomUUID(), id: offer.offer_id, productId: product.id, name: product.name, unit: product.unit, quantity: offer.quantity, price: Number(offer.price_at_offer), expiresAt: offer.expires_at }
+  const showOffer = (offer: Offer, product?: Product) => {
+    const proposal = { key: crypto.randomUUID(), id: offer.offer_id, productId: offer.article, name: product?.name || offer.article, unit: product?.unit || '', quantity: offer.quantity, price: Number(offer.price_at_offer), expiresAt: offer.expires_at }
     setPending(proposal)
     append({ role: 'assistant', text: 'Проверьте товар, цену и количество. Для добавления нажмите «Да, добавить».', proposalKey: proposal.key })
+  }
+
+  const offerProposal = async (product: Product, quantity: number) => {
+    showOffer(await createOffer(product, quantity), product)
   }
 
   const proposeRemote = async (product: Product, quantity: number) => {
@@ -262,7 +273,7 @@ function App() {
         }
         const confirmed = data.outcome === 'confirmed' || data.outcome === 'already_confirmed'
         const cartUrl = confirmed ? safeCartUrl(data.cart_url || undefined) : undefined
-        append({ role: 'assistant', text: confirmed ? 'Сервер подтвердил добавление товара.' : `Товар не добавлен. ${data.message}`, cartUrl })
+        append({ role: 'assistant', text: confirmed ? 'Сервер подтвердил добавление товара.' : (data.outcome === 'cart_unavailable' ? 'Товар не добавлен: корзина EKT пока не подключена.' : `Товар не добавлен. ${data.message}`), cartUrl })
         if (cartUrl) setRemoteCartUrl(cartUrl)
       } else {
         const product = products.find(p => p.id === pending.productId)
@@ -298,9 +309,7 @@ function App() {
         const data = await sendMessage(text, attachmentIds)
         setConnection('Подключено · прототип')
         append({ role: 'assistant', text: data.text, cards: data.cards })
-        if (data.analysis.intent === 'add_to_cart_request' && data.analysis.article && data.analysis.quantity) {
-          await offerProposal(await freshProduct(data.analysis.article), data.analysis.quantity)
-        }
+        if (data.offer) showOffer(data.offer, data.cards.find(card => card.sku === data.offer?.article))
         return
       }
       const lower = text.toLowerCase().replaceAll('ё', 'е')
@@ -333,22 +342,25 @@ function App() {
     }
   }
 
-  const upload = async (file?: File) => {
-    if (!file || actionRef.current) return
-    if (file.size > 10 * 1024 * 1024) { append({ role: 'assistant', text: 'Файл слишком большой. Выберите файл до 10 МБ.' }); return }
-    const allowed = /\.(pdf|docx|xlsx|jpe?g|png)$/i.test(file.name)
+  const upload = async (selected?: FileList | null) => {
+    const files = Array.from(selected || [])
+    if (!files.length || actionRef.current) return
+    if (files.length > 5) { append({ role: 'assistant', text: 'Выберите не больше 5 файлов за раз.' }); return }
+    if (files.some(file => file.size > 10 * 1024 * 1024)) { append({ role: 'assistant', text: 'Файл слишком большой. Выберите файл до 10 МБ.' }); return }
+    const allowed = files.every(file => /\.(pdf|docx|xlsx|jpe?g|png)$/i.test(file.name))
     if (!allowed) { append({ role: 'assistant', text: 'Поддерживаются PDF, DOCX, XLSX, JPEG и PNG.' }); return }
     if (!apiEnabled) {
-      append({ role: 'user', text: `📎 ${file.name}` }, { role: 'assistant', text: 'Файл выбран. Распознавание документов появится после подключения Python-бэкенда. Пока попробуйте написать артикул или название текстом.' })
+      append({ role: 'user', text: `📎 ${files.map(file => file.name).join(", ")}` }, { role: 'assistant', text: 'Файл выбран. Распознавание документов появится после подключения Python-бэкенда. Пока попробуйте написать артикул или название текстом.' })
       return
     }
     actionRef.current = true
     setBusy(true)
     setPending(undefined)
-    append({ role: 'user', text: `📎 ${file.name}` })
+    append({ role: 'user', text: `📎 ${files.map(file => file.name).join(", ")}` })
     try {
-      const attachment = await uploadAttachment(file)
-      const data = await sendMessage(`Найди товары из файла «${file.name}»`, [attachment.id])
+      const attachments = []
+      for (const file of files) attachments.push(await uploadAttachment(file))
+      const data = await sendMessage(`Найди товары из файлов: ${files.map(file => file.name).join(', ')}`, attachments.map(item => item.id))
       setConnection('Подключено · прототип')
       append({ role: 'assistant', text: data.text, cards: data.cards })
     } catch (error) {
@@ -385,6 +397,11 @@ function App() {
       products={catalog}
       status={catalogStatus}
       remote={apiEnabled}
+      source={catalogSource}
+      page={catalogPage}
+      hasMore={hasMore}
+      paginated={apiEnabled && !query.trim() && category === 'Все товары'}
+      onPage={setCatalogPage}
       category={category}
       query={query}
       inStock={inStock}
@@ -406,7 +423,7 @@ function App() {
     <MobileNavigation route={route} cartCount={cartCount} onHome={() => navigate('home')} onCatalog={() => navigate('catalog')} onCart={() => remoteCartUrl ? window.location.assign(remoteCartUrl) : navigate('cart')} />
 
     {!chatOpen && <button className="chat-launcher" onClick={() => setChatOpen(true)} aria-label="Открыть ИИ-ассистента"><Icon name="spark" size={26} /><span>Спросить ассистента</span><span className="launcher-pulse" /></button>}
-    {chatOpen && <section className="chat-panel" role="dialog" aria-label="ИИ-ассистент"><div className="chat-header"><div className="chat-avatar"><Icon name="spark" size={22} /></div><div><strong>ИИ-ассистент EKT</strong><span><i /> {connection}</span></div><button onClick={() => setChatOpen(false)} aria-label="Закрыть чат"><Icon name="close" size={21} /></button></div><div className="chat-messages" aria-live="polite"><div className="chat-today">Сегодня · консультация по товарам</div>{messages.map((message, index) => <div className={`chat-message chat-message--${message.role}`} key={index}>{message.role === 'assistant' && <div className="message-avatar"><Icon name="spark" size={14} /></div>}<div className="message-content"><div className="message-bubble">{message.text}</div>{message.cards?.map(product => <div className="chat-product" key={product.id}><ProductArt kind={product.art || 'cable'} compact /><div><b>{product.name}</b><span>Код {product.sku} · {product.stock === null ? 'наличие не подтверждено' : product.stock ? `${product.stock} ${product.unit} в наличии` : 'нет в наличии'}</span><button onClick={() => openForProduct(product, product.stock ? 'add' : 'info')}>{product.stock ? 'Добавить' : 'Подробнее'} →</button></div></div>)}{pending && message.proposalKey === pending.key && <div className="proposal-card"><b>Подтвердить добавление</b><span>{pending.name}</span>{pending.price !== undefined && <span>Цена: {price(pending.price)}</span>}{pending.expiresAt && <span>Действует до {new Date(pending.expiresAt).toLocaleTimeString()}</span>}<label>Количество {apiEnabled ? <strong>{pending.quantity} {pending.unit}</strong> : <><input type="number" min="1" max={pending.maxAvailable} value={pending.quantity} onChange={event => setPending(current => current && ({ ...current, quantity: Math.max(1, Math.min(current.maxAvailable || 999999, Number(event.target.value) || 1)) }))} /> {pending.unit}</>}</label><div><button className="confirm-button" disabled={busy} onClick={confirm}><Icon name="check" size={17} /> Да, добавить</button><button className="cancel-button" disabled={busy} onClick={() => { setPending(undefined); append({ role: 'assistant', text: 'Добавление отменено. Корзина не изменилась.' }) }}>Отмена</button></div></div>}{message.cartUrl && <a className="cart-link" href={message.cartUrl} onClick={event => { if (message.cartUrl === '#cart') { event.preventDefault(); navigate('cart'); setChatOpen(false) } }}>{message.cartUrl.includes('checkout-delivery') ? 'Условия на ekt.kz' : 'Открыть корзину'} <Icon name="arrow" size={16} /></a>}</div></div>)}{busy && <div className="typing"><span /><span /><span /></div>}<div ref={endRef} /></div><div className="quick-prompts"><button onClick={() => send(apiEnabled ? 'Наличие DEMO-CABLE-VVG-3X2-5' : 'Есть кабель ВВГ 3×2,5?')}>Проверить наличие</button><button onClick={() => send(apiEnabled ? 'Характеристики DEMO-CABLE-VVG-3X2-5' : 'Подбери аналог кабеля ВВГ')}>{apiEnabled ? 'Характеристики' : 'Подобрать аналог'}</button><button onClick={() => send('Какие условия доставки и оплаты?')}>Доставка и оплата</button></div><form className="chat-composer" onSubmit={event => { event.preventDefault(); void send() }}><input ref={fileRef} className="visually-hidden" type="file" accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png" onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /><button type="button" className="attach-button" disabled={busy} onClick={() => fileRef.current?.click()} aria-label="Прикрепить файл"><Icon name="clip" size={21} /></button><input maxLength={4000} value={input} onChange={event => setInput(event.target.value)} placeholder="Напишите вопрос о товаре…" aria-label="Сообщение ассистенту" /><button type="submit" className="send-button" disabled={busy || !input.trim()} aria-label="Отправить сообщение"><Icon name="send" size={19} /></button></form><div className="chat-disclaimer">Прототип: каталог может содержать демоданные. Корзина ekt.kz не подключена.</div></section>}
+    {chatOpen && <section className="chat-panel" role="dialog" aria-label="ИИ-ассистент"><div className="chat-header"><div className="chat-avatar"><Icon name="spark" size={22} /></div><div><strong>ИИ-ассистент EKT</strong><span><i /> {connection}</span></div><button onClick={() => setChatOpen(false)} aria-label="Закрыть чат"><Icon name="close" size={21} /></button></div><div className="chat-messages" aria-live="polite"><div className="chat-today">Сегодня · консультация по товарам</div>{messages.map((message, index) => <div className={`chat-message chat-message--${message.role}`} key={index}>{message.role === 'assistant' && <div className="message-avatar"><Icon name="spark" size={14} /></div>}<div className="message-content"><div className="message-bubble">{message.text}</div>{message.cards?.map(product => <div className="chat-product" key={product.id}>{product.imageUrl ? <img className="chat-product-photo" src={product.imageUrl} alt="" /> : <ProductArt kind={product.art || 'cable'} compact />}<div><b>{product.name}</b><span>{price(product.price)}</span>{product.sourceUrl && <a href={product.sourceUrl} target="_blank" rel="noreferrer">Карточка EKT</a>}<span>Код {product.sku} · {product.stock === null ? 'наличие не подтверждено' : product.stock ? `${product.stock} ${product.unit} в наличии` : 'нет в наличии'}</span><button onClick={() => openForProduct(product, product.stock ? 'add' : 'info')}>{product.stock ? 'Добавить' : 'Подробнее'} →</button></div></div>)}{pending && message.proposalKey === pending.key && <div className="proposal-card"><b>Подтвердить добавление</b><span>{pending.name}</span>{pending.price !== undefined && <span>Цена: {price(pending.price)}</span>}{pending.expiresAt && <span>Действует до {new Date(pending.expiresAt).toLocaleTimeString()}</span>}<label>Количество {apiEnabled ? <strong>{pending.quantity} {pending.unit}</strong> : <><input type="number" min="1" max={pending.maxAvailable} value={pending.quantity} onChange={event => setPending(current => current && ({ ...current, quantity: Math.max(1, Math.min(current.maxAvailable || 999999, Number(event.target.value) || 1)) }))} /> {pending.unit}</>}</label><div><button className="confirm-button" disabled={busy} onClick={confirm}><Icon name="check" size={17} /> Да, добавить</button><button className="cancel-button" disabled={busy} onClick={() => { setPending(undefined); append({ role: 'assistant', text: 'Добавление отменено. Корзина не изменилась.' }) }}>Отмена</button></div></div>}{message.cartUrl && <a className="cart-link" href={message.cartUrl} onClick={event => { if (message.cartUrl === '#cart') { event.preventDefault(); navigate('cart'); setChatOpen(false) } }}>{message.cartUrl.includes('checkout-delivery') ? 'Условия на ekt.kz' : 'Открыть корзину'} <Icon name="arrow" size={16} /></a>}</div></div>)}{busy && <div className="typing"><span /><span /><span /></div>}<div ref={endRef} /></div><div className="quick-prompts"><button onClick={() => send(apiEnabled ? `Наличие ${activeId || catalog[0]?.sku || ''}` : 'Есть кабель ВВГ 3×2,5?')}>Проверить наличие</button><button onClick={() => send(apiEnabled ? `Подбери аналог ${activeId || catalog[0]?.sku || ''}` : 'Подбери аналог кабеля ВВГ')}>Подобрать аналог</button><button onClick={() => send('Какие условия доставки и оплаты?')}>Доставка и оплата</button></div><form className="chat-composer" onSubmit={event => { event.preventDefault(); void send() }}><input ref={fileRef} className="visually-hidden" type="file" multiple accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png" onChange={event => { void upload(event.target.files); event.target.value = '' }} /><button type="button" className="attach-button" disabled={busy} onClick={() => fileRef.current?.click()} aria-label="Прикрепить файл"><Icon name="clip" size={21} /></button><input maxLength={4000} value={input} onChange={event => setInput(event.target.value)} placeholder="Напишите вопрос о товаре…" aria-label="Сообщение ассистенту" /><button type="submit" className="send-button" disabled={busy || !input.trim()} aria-label="Отправить сообщение"><Icon name="send" size={19} /></button></form><div className="chat-disclaimer">{catalogSource === 'ekt' ? 'Каталог EKT · цены и остатки из API. Корзина EKT не подключена.' : 'Прототип · демонстрационные данные. Корзина EKT не подключена.'}</div></section>}
   </>
 }
 

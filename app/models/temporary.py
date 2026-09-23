@@ -21,6 +21,8 @@ class PendingOffer(TimestampMixin, Base):
     price_at_offer: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending")
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Bound by the server; no cart owner or cart ID is taken from client input.
+    cart_context: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

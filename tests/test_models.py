@@ -19,6 +19,10 @@ def test_temporary_entities_have_expiry_and_creation_time() -> None:
         assert any("expires_at" in index.columns.keys() for index in model.__table__.indexes)
 
 
+def test_pending_offer_persists_server_owned_cart_context() -> None:
+    assert "cart_context" in PendingOffer.__table__.c
+
+
 def test_chat_entities_are_mapped() -> None:
     assert "chat_sessions" == ChatSession.__tablename__
     assert "messages" == Message.__tablename__

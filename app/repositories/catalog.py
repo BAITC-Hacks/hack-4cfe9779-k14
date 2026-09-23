@@ -12,8 +12,9 @@ from app.schemas.catalog import CatalogProductUpsert
 class CatalogRepository:
     """PostgreSQL persistence and queries for the local product catalog."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, source_origin: str | None = None) -> None:
         self.session = session
+        self.source_origin = source_origin
 
     async def upsert(self, payload: CatalogProductUpsert) -> Product:
         values = payload.model_dump()
@@ -27,7 +28,10 @@ class CatalogRepository:
         return result.scalar_one()
 
     async def find_by_article(self, article: str) -> Product | None:
-        result = await self.session.execute(select(Product).where(Product.article == article))
+        statement = select(Product).where(func.lower(Product.article) == article.casefold())
+        if self.source_origin:
+            statement = statement.where(Product.source_fields["data_origin"].astext == self.source_origin)
+        result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
     async def full_text_search(
@@ -49,5 +53,7 @@ class CatalogRepository:
             statement = select(Product).order_by(Product.name).limit(limit)
         if characteristics:
             statement = statement.where(Product.characteristics.contains(characteristics))
+        if self.source_origin:
+            statement = statement.where(Product.source_fields["data_origin"].astext == self.source_origin)
         result = await self.session.execute(statement)
         return result.scalars().all()

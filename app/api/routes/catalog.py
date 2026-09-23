@@ -1,14 +1,18 @@
 import json
 from typing import Annotated, Any
+from collections.abc import AsyncGenerator
 
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_db
+from app.config.settings import get_settings
 from app.integrations.catalog_adapter import build_catalog_adapter
 from app.repositories.catalog import CatalogRepository
 from app.schemas.catalog import (
     CatalogCandidate,
+    CatalogSourcePage,
     CatalogIndexRefresh,
     CatalogProductUpsert,
     CatalogSearchResponse,
@@ -20,11 +24,31 @@ from app.services.catalog import CatalogService
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 
-def get_catalog_service(session: AsyncSession = Depends(get_db)) -> CatalogService:
-    return CatalogService(CatalogRepository(session), adapter=build_catalog_adapter())
+async def get_catalog_service(session: AsyncSession = Depends(get_db)) -> AsyncGenerator[CatalogService, None]:
+    adapter = build_catalog_adapter()
+    try:
+        yield CatalogService(CatalogRepository(session, source_origin="ekt/live" if get_settings().catalog_adapter_mode == "ekt" else "mock/demo"), adapter=adapter)
+    finally:
+        await adapter.aclose()
 
 
 Catalog = Annotated[CatalogService, Depends(get_catalog_service)]
+
+
+class RuntimeStatus(BaseModel):
+    catalog_source: str
+    model_configured: bool
+    model: str | None
+    cart_mode: str
+
+
+@router.get("/status", response_model=RuntimeStatus)
+async def runtime_status():
+    settings = get_settings()
+    configured = bool(settings.openai_api_key or (settings.llm_api_key and settings.llm_api_url and settings.llm_model))
+    return RuntimeStatus(catalog_source=settings.catalog_adapter_mode, model_configured=configured,
+                         model=settings.openai_model if settings.openai_api_key else settings.llm_model or None,
+                         cart_mode=settings.cart_adapter_mode)
 
 
 @router.post("/products", response_model=CatalogCandidate)
@@ -35,6 +59,11 @@ async def save_product(payload: CatalogProductUpsert, service: Catalog) -> Catal
 @router.get("/products", response_model=CatalogSearchResponse)
 async def list_products(service: Catalog, limit: int = Query(default=100, ge=1, le=100)) -> CatalogSearchResponse:
     return await service.list_products(limit=limit)
+
+
+@router.get("/source-page", response_model=CatalogSourcePage)
+async def load_source_page(service: Catalog, page: int = Query(default=1, ge=1, le=10000)):
+    return await service.load_source_page(page)
 
 
 @router.get("/search", response_model=CatalogSearchResponse)

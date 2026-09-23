@@ -4,28 +4,31 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.database import get_db
-from app.integrations.cart_gateway import UnavailableCartGateway
-from app.integrations.ekt_client import EktConnectionError
+from app.config.database import SessionLocal
+from app.config.settings import get_settings
+from app.integrations.catalog_adapter import build_catalog_adapter
+from app.integrations.cart_gateway import build_cart_gateway
+from app.repositories.catalog import CatalogRepository
 from app.repositories.offers import OfferRepository
 from app.schemas.offers import ConfirmOfferResult, CreateOfferRequest, PendingOfferView
 from app.services.offers import OfferService
+from app.services.catalog import CatalogService
+from app.services.offer_product_provider import CatalogCurrentProductProvider
 
 router = APIRouter(prefix="/api/chat/sessions/{session_id}/offers", tags=["offers"])
 
 
-class UnavailableEktClient:
-    async def get_current_product_by_article(self, article: str):
-        del article
-        raise EktConnectionError("EKT client is not configured")
-
-
-async def get_offer_service(session: AsyncSession = Depends(get_db)) -> AsyncGenerator[OfferService, None]:
-    # A real EKT mapper and cart gateway must be injected after partner API
-    # documentation is available. These safe placeholders never write a cart.
-    yield OfferService(OfferRepository(session), UnavailableEktClient(), UnavailableCartGateway())
+async def get_offer_service() -> AsyncGenerator[OfferService, None]:
+    # Offer transactions own their session. Catalog lookups can autobegin a
+    # read transaction and must not interfere with offer locks/commits.
+    adapter = build_catalog_adapter()
+    try:
+        async with SessionLocal() as offer_session, SessionLocal() as catalog_session:
+            catalog = CatalogService(CatalogRepository(catalog_session, source_origin="ekt/live" if get_settings().catalog_adapter_mode == "ekt" else "mock/demo"), adapter=adapter)
+            yield OfferService(OfferRepository(offer_session), CatalogCurrentProductProvider(catalog), build_cart_gateway())
+    finally:
+        await adapter.aclose()
 
 
 Offer = Annotated[OfferService, Depends(get_offer_service)]

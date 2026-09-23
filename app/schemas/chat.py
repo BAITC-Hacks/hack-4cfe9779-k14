@@ -6,6 +6,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.attachment_parsing import AttachmentItemMatch
+from app.schemas.analogs import AnalogSuggestion
+from app.schemas.offers import PendingOfferView
 from app.schemas.purchase_conditions import PurchaseConditions
 
 
@@ -17,6 +19,7 @@ class ChatRole(StrEnum):
 class ChatIntent(StrEnum):
     FIND_PRODUCT = "find_product"
     SEARCH_BY_REQUIREMENTS = "search_by_requirements"
+    FIND_ANALOG = "find_analog"
     PRODUCT_CHARACTERISTICS = "product_characteristics"
     CHECK_PRICE = "check_price"
     CHECK_STOCK = "check_stock"
@@ -98,3 +101,5 @@ class ChatReply(BaseModel):
     current_data: dict[str, Any] | None = None
     attachment_items: list[AttachmentItemMatch] = Field(default_factory=list)
     purchase_conditions: PurchaseConditions | None = None
+    analogs: list[AnalogSuggestion] = Field(default_factory=list)
+    pending_offer: PendingOfferView | None = None

@@ -9,7 +9,7 @@ import pytest
 from app.integrations.ekt_client import EktProduct
 from app.schemas.catalog import CatalogCandidate, CatalogSearchResponse, CurrentAvailability
 from app.schemas.chat import ChatAnalysis, ChatIntent, ChatMessageCreate, ChatRole
-from app.schemas.offers import CartWriteResult, CreateOfferRequest
+from app.schemas.offers import CartItem, CartReference, CartSnapshot, CartWriteResult, CreateOfferRequest
 from app.services.chat import ChatService
 from app.services.offers import OfferService
 
@@ -105,11 +105,31 @@ class Ekt:
 class Cart:
     def __init__(self) -> None:
         self.calls = 0
+        self.read_calls = 0
+        self.items = {}
 
-    async def add_item(self, **kwargs):
-        del kwargs
+    source_label = "demo test cart"
+
+    async def resolve_cart(self, *, session_id):
+        return CartReference(cart_id=f"cart-{session_id}", owner_session_id=session_id)
+
+    async def add_item(self, *, cart, product_identifier, quantity, idempotency_key):
         self.calls += 1
-        return CartWriteResult(cart_url="https://cart.example/current")
+        self.items[product_identifier] = self.items.get(product_identifier, 0) + quantity
+        return CartWriteResult(cart_id=cart.cart_id, operation_id=idempotency_key)
+
+    async def set_item_quantity(self, *, cart, product_identifier, quantity, idempotency_key):
+        self.items[product_identifier] = quantity
+        return CartWriteResult(cart_id=cart.cart_id, operation_id=idempotency_key)
+
+    async def get_cart(self, *, cart):
+        self.read_calls += 1
+        return CartSnapshot(
+            cart_id=cart.cart_id,
+            items=[CartItem(product_identifier=key, quantity=value) for key, value in self.items.items()],
+            cart_url="https://cart.example/current",
+            source_label=self.source_label,
+        )
 
 
 async def test_chat_catalog_offer_confirmation_journey_uses_mocked_llm_ekt_and_cart() -> None:
@@ -132,3 +152,4 @@ async def test_chat_catalog_offer_confirmation_journey_uses_mocked_llm_ekt_and_c
     assert confirmation.cart_url == "https://cart.example/current"
     assert ekt.calls == 2  # offer creation and the mandatory confirmation recheck
     assert cart.calls == 1
+    assert cart.read_calls == 1

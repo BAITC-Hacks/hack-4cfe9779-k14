@@ -6,32 +6,42 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_db
+from app.config.settings import get_settings
+from app.integrations.responses_consultant import ResponsesConsultant
 from app.integrations.llm_client import LLMConfigurationError, OpenAICompatibleLLMClient, UnavailableLLMClient
 from app.integrations.catalog_adapter import build_catalog_adapter
+from app.api.routes.offers import get_offer_service
 from app.repositories.catalog import CatalogRepository
 from app.repositories.attachments import ChatAttachmentRepository
 from app.repositories.chat import ChatRepository
 from app.schemas.chat import ChatHistoryResponse, ChatMessageCreate, ChatReply, ChatSessionCreated
 from app.services.catalog import CatalogService
+from app.services.analogs import AnalogService
 from app.services.chat import ChatService
+from app.services.offers import OfferService
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
-async def get_chat_service(session: AsyncSession = Depends(get_db)) -> AsyncGenerator[ChatService, None]:
+async def get_chat_service(session: AsyncSession = Depends(get_db), offers: OfferService = Depends(get_offer_service)) -> AsyncGenerator[ChatService, None]:
     try:
-        llm = OpenAICompatibleLLMClient()
+        llm = ResponsesConsultant() if get_settings().openai_api_key else OpenAICompatibleLLMClient()
     except LLMConfigurationError:
         llm = UnavailableLLMClient()
+    adapter = build_catalog_adapter()
     try:
+        catalog = CatalogService(CatalogRepository(session, source_origin="ekt/live" if get_settings().catalog_adapter_mode == "ekt" else "mock/demo"), adapter=adapter)
         yield ChatService(
             repository=ChatRepository(session),
-            catalog=CatalogService(CatalogRepository(session), adapter=build_catalog_adapter()),
+            catalog=catalog,
             llm=llm,
             attachments=ChatAttachmentRepository(session),
+            analogs=AnalogService(catalog),
+            offer_proposals=offers,
         )
     finally:
         await llm.aclose()
+        await adapter.aclose()
 
 
 Chat = Annotated[ChatService, Depends(get_chat_service)]

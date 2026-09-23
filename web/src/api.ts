@@ -3,6 +3,8 @@
 export type Product = {
   id: string
   externalId?: string
+  imageUrl?: string
+  sourceUrl?: string
   name: string
   sku: string
   category: string
@@ -43,6 +45,8 @@ type ChatReply = {
   candidates: CatalogProduct[]
   current_data: { article: string } | null
   attachment_items: { candidates: CatalogProduct[] }[]
+  analogs?: { product: CatalogProduct }[]
+  pending_offer?: Offer | null
 }
 
 // Same-origin proxy by default. "demo" explicitly enables the old offline demo.
@@ -75,7 +79,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   try {
     response = await fetch(`${apiBase}${path}`, {
       ...options,
-      signal: options.signal ?? AbortSignal.timeout(30000),
+      signal: options.signal ?? AbortSignal.timeout(60000),
       headers: { ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
     })
   } catch {
@@ -115,6 +119,18 @@ export async function history() {
   }
 }
 
+export function safeSourceUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && (url.hostname === 'ekt.kz' || url.hostname.endsWith('.ekt.kz')) && !url.username && !url.password ? url.href : undefined
+  } catch { return undefined }
+}
+
+export function runtimeStatus() {
+  return request<{catalog_source: string; model_configured: boolean; model: string | null; cart_mode: string}>('/catalog/status')
+}
+
 export function toProduct(row: CatalogProduct): Product {
   const category = row.category === 'Кабель и провод' ? 'Кабель / Провод' : row.category || 'Прочее оборудование'
   const label = `${row.name} ${category}`.toLowerCase()
@@ -126,6 +142,7 @@ export function toProduct(row: CatalogProduct): Product {
   return {
     id: row.article, externalId: row.external_id || undefined, sku: row.article,
     name: row.name, category, art,
+    imageUrl: safeSourceUrl(row.source_fields?.image), sourceUrl: safeSourceUrl(row.source_fields?.url),
     price: amount !== null && Number.isFinite(amount) && amount >= 0 ? amount : null,
     stock: row.cached_available === false && row.fresh ? 0 : stock,
     unit: typeof row.source_fields?.unit === 'string' ? row.source_fields.unit : '',
@@ -138,10 +155,16 @@ export async function freshProduct(article: string, signal?: AbortSignal) {
 }
 
 async function refreshCards(rows: CatalogProduct[], signal?: AbortSignal) {
-  return Promise.all(rows.map(async row => {
-    try { return await freshProduct(row.article, signal) }
-    catch { return toProduct(row) } // Indexed details remain visible; stale price/stock never do.
-  }))
+  const cards: Product[] = []
+  // Four parallel reads bound load on the partner API while loading a page.
+  for (let index = 0; index < rows.length; index += 4) {
+    if (signal?.aborted) throw new Error('Загрузка отменена')
+    cards.push(...await Promise.all(rows.slice(index, index + 4).map(async row => {
+      try { return await freshProduct(row.article, signal) }
+      catch { return toProduct(row) }
+    })))
+  }
+  return cards
 }
 
 export async function searchCatalog(query: string, signal?: AbortSignal) {
@@ -150,18 +173,26 @@ export async function searchCatalog(query: string, signal?: AbortSignal) {
   return refreshCards(data.candidates, signal)
 }
 
+export async function loadCatalogPage(page: number, signal?: AbortSignal) {
+  const result = await request<{candidates: CatalogProduct[]; has_more: boolean}>(`/catalog/source-page?page=${page}`, {signal})
+  return {products: await refreshCards(result.candidates, signal), hasMore: result.has_more}
+}
+
 export async function sendMessage(content: string, attachmentIds: string[] = []) {
   const id = await getSession()
   const data = await request<ChatReply>(`/chat/sessions/${id}/messages`, {
     method: 'POST', body: JSON.stringify({ content, attachment_ids: attachmentIds }),
   })
-  const rows = [...data.candidates, ...data.attachment_items.flatMap(item => item.candidates)]
+  const rows = [...data.candidates, ...data.attachment_items.flatMap(item => item.candidates), ...(data.analogs || []).map(item => item.product)]
   const unique = [...new Map(rows.map(row => [row.article, row])).values()]
   const cards = await refreshCards(unique)
   if (data.current_data?.article && !cards.some(card => card.sku === data.current_data?.article)) {
     try { cards.push(await freshProduct(data.current_data.article)) } catch { /* Keep the server's availability explanation. */ }
   }
-  return { text: data.assistant_message.content, cards, analysis: data.analysis }
+  if (data.pending_offer && !cards.some(card => card.sku === data.pending_offer?.article)) {
+    try { cards.push(await freshProduct(data.pending_offer.article)) } catch { /* Offer still has article and price. */ }
+  }
+  return { text: data.assistant_message.content, cards, analysis: data.analysis, offer: data.pending_offer }
 }
 
 export async function uploadAttachment(file: File) {

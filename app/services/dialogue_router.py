@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from app.schemas.chat import ChatAnalysis, ChatIntent
 
 
-ARTICLE_PATTERN = re.compile(r"(?<![\w-])([A-Za-z0-9]+(?:[-_/][A-Za-z0-9]+)+)(?![\w-])")
+ARTICLE_PATTERN = re.compile(r"(?<![\w-])([A-Za-zА-Яа-яЁё0-9]+(?:[-_/][A-Za-zА-Яа-яЁё0-9]+)+_?|\d{5,}_?|[A-Za-zА-Яа-яЁё]+\d{3,}_?)(?![\w-])")
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,8 @@ class DeterministicDialogueRouter:
 
         if self._contains(normalized, "оплат", "достав", "минимальн", "услови", "самовывоз"):
             return ChatAnalysis(intent=ChatIntent.PURCHASE_CONDITIONS)
+        if self._contains(normalized, "аналог", "замен", "альтернатив"):
+            return self._product_question(ChatIntent.FIND_ANALOG, article, "Укажите артикул товара, для которого нужен аналог.")
         if self._contains(normalized, "сертифик"):
             return self._product_question(ChatIntent.CHECK_CERTIFICATES, article, "Укажите артикул товара, чтобы проверить сертификаты.")
         if self._contains(normalized, "налич", "остат", "сколько", "есть в наличии"):
@@ -48,8 +50,8 @@ class DeterministicDialogueRouter:
 
     @staticmethod
     def _article(content: str) -> str | None:
-        match = ARTICLE_PATTERN.search(content)
-        return match.group(1) if match else None
+        return next((match.group(1) for match in ARTICLE_PATTERN.finditer(content)
+                     if any(char.isdigit() for char in match.group(1))), None)
 
     @staticmethod
     def _contains(content: str, *fragments: str) -> bool:

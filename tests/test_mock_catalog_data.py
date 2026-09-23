@@ -16,4 +16,5 @@ def test_mock_catalog_is_explicitly_synthetic_and_representative() -> None:
     assert any(product.certificates == [] for product in products)
     assert any(product.certificates is None for product in products)
     assert any(product.cached_stock_by_location and len(product.cached_stock_by_location) > 1 for product in products)
+    assert any(product.article.endswith("-ALT") and product.cached_available is True for product in products)
     assert dataset["unknown_sku_examples"] == ["DEMO-UNKNOWN-404"]

@@ -76,3 +76,9 @@ class FreshCatalogProduct(CatalogProductUpsert):
     """A directly refreshed adapter response, never a local-cache fallback."""
 
     fresh: bool = True
+
+
+class CatalogSourcePage(CatalogSearchResponse):
+    match_type: str = "source_page"
+    page: int
+    has_more: bool

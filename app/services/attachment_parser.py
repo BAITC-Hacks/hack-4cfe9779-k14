@@ -11,9 +11,9 @@ class AttachmentItemParser:
     _ARTICLE_HEADERS = {"article", "артикул", "sku", "код", "code"}
     _NAME_HEADERS = {"name", "product", "товар", "наименование", "название"}
     _QUANTITY_HEADERS = {"quantity", "qty", "count", "количество", "кол-во", "кол во"}
-    _ARTICLE_PATTERN = re.compile(r"(?:артикул|article|sku|код)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9._/-]{1,127})", re.I)
+    _ARTICLE_PATTERN = re.compile(r"(?:артикул|article|sku|код)\s*[:#]?\s*([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9._/-]{1,127})", re.I)
     _QUANTITY_PATTERN = re.compile(r"(?:количество|кол-во|qty|quantity)\s*[:#]?\s*(\d+)", re.I)
-    _LINE_ITEM_PATTERN = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._/-]{1,127})\s+(?:x\s*)?(\d+)\s*$", re.I)
+    _LINE_ITEM_PATTERN = re.compile(r"^\s*([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9._/-]{1,127})\s+(?:x\s*)?(\d+)\s*$", re.I)
 
     def parse(self, attachment_id: UUID, result: AttachmentResult) -> list[ParsedAttachmentItem]:
         items = self._parse_tables(attachment_id, result)

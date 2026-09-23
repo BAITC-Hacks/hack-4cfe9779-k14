@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from app.integrations.ekt_client import (
     EktAuthenticationError,
+    EktConfigurationError,
     EktClient,
     EktClientError,
     EktInvalidJsonError,
@@ -225,7 +226,9 @@ def build_catalog_adapter() -> CatalogAdapter:
         )
         return MockCatalogAdapter.from_file(path)
     if settings.catalog_adapter_mode == "ekt":
-        return UnavailableCatalogAdapter(
-            "EKT response mapper is not implemented because the partner JSON contract is not confirmed"
-        )
+        from app.integrations.ekt_mapper import LiveEktResponseMapper
+        try:
+            return EktCatalogAdapter(EktClient(LiveEktResponseMapper()))
+        except EktConfigurationError:
+            return UnavailableCatalogAdapter("EKT credentials are not configured")
     return UnavailableCatalogAdapter("CATALOG_ADAPTER_MODE must be mock or ekt")

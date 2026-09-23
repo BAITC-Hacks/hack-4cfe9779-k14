@@ -265,3 +265,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid #2c7294; outline-offs
   html { scroll-behavior: auto; }
   .ekt-carousel-track { scroll-behavior: auto; }
 }
+
+.catalog-pagination { display:flex; gap:16px; align-items:center; margin:16px 0; }
+.catalog-pagination button { padding:8px 16px; border:1px solid #d4dce2; background:white; cursor:pointer; }
+.catalog-pagination button:disabled { opacity:.45; cursor:default; }
+.chat-product-photo { width:64px; height:64px; object-fit:contain; }

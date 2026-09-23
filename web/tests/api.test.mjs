@@ -34,7 +34,7 @@ test('FastAPI contract: session, content, uploads, offers and idempotent confirm
       if (missingSession) { missingSession = false; return Response.json({code: 'not_found'}, {status: 404}) }
       body = {messages: []}
     }
-    else if (url.endsWith('/messages')) body = { assistant_message: { content: 'Ответ сервера' }, candidates: [row], current_data: null, attachment_items: [], analysis: { intent: 'find_product' } }
+    else if (url.endsWith('/messages')) body = { assistant_message: { content: 'Ответ сервера' }, candidates: [row], current_data: null, attachment_items: [], analysis: { intent: 'find_product' }, pending_offer: { offer_id: 'chat-offer-1', article: row.article, product_identifier: row.external_id, quantity: 2, price_at_offer: '12.5' } }
     else if (url.endsWith('/attachments')) body = { id: 'attachment-1', warnings: [] }
     else if (url.endsWith('/offers')) body = { offer_id: 'offer-1', article: row.article, quantity: 2 }
     else if (url.endsWith('/confirm')) body = { outcome: 'cart_unavailable', message: 'Cart unavailable', cart_url: null }
@@ -49,6 +49,8 @@ test('FastAPI contract: session, content, uploads, offers and idempotent confirm
     failFresh = false
     const reply = await sendMessage('Найди DEMO-1', ['attachment-1'])
     assert.equal(reply.text, 'Ответ сервера')
+    assert.equal(reply.offer.offer_id, 'chat-offer-1')
+    assert.equal(calls.filter(call => call.url.endsWith('/offers')).length, 0)
     assert.deepEqual(JSON.parse(calls.find(call => call.url.endsWith('/messages')).options.body), { content: 'Найди DEMO-1', attachment_ids: ['attachment-1'] })
     await uploadAttachment(new File(['test'], 'test.pdf', { type: 'application/pdf' }))
     const upload = calls.find(call => call.url.endsWith('/attachments'))

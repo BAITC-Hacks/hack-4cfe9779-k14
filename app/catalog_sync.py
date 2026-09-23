@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import logging
 
 from app.config.database import SessionLocal, engine
@@ -13,13 +14,26 @@ from app.repositories.catalog import CatalogRepository
 from app.services.catalog import CatalogService
 
 
-async def refresh_catalog() -> None:
+async def refresh_catalog(product_ids: list[str] | None = None) -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
     adapter = build_catalog_adapter()
     try:
         async with SessionLocal() as session:
-            result = await CatalogService(CatalogRepository(session), adapter=adapter).refresh_index()
+            service = CatalogService(CatalogRepository(session), adapter=adapter)
+            if settings.catalog_adapter_mode == "ekt":
+                from app.schemas.catalog import CatalogIndexRefresh
+                count = 0
+                for page in range(1, settings.catalog_sync_pages + 1):
+                    loaded = await service.load_source_page(page)
+                    count += len(loaded["candidates"])
+                    if not loaded["has_more"]:
+                        break
+                result = CatalogIndexRefresh(pages_loaded=page, products_loaded=count)
+            else:
+                result = await service.refresh_index()
+            for identifier in product_ids or []:
+                await service.save_product(await adapter.get_product_details(identifier))
         logging.getLogger("catalog_sync").info(
             "catalog_index_refreshed", extra={"event": "catalog_index_refreshed", **result.model_dump()}
         )
@@ -29,4 +43,6 @@ async def refresh_catalog() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(refresh_catalog())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--product-id", action="append", default=[], help="Also load a known EKT product ID")
+    asyncio.run(refresh_catalog(parser.parse_args().product_id))

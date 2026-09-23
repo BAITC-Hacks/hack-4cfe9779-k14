@@ -53,6 +53,19 @@
       "cached_available": null,
       "certificates": [],
       "source_fields": {"data_origin": "mock/demo", "availability_note": "not provided"}
+    },
+    {
+      "article": "DEMO-CABLE-VVG-3X1-5-ALT",
+      "external_id": "demo-005",
+      "name": "Кабель ВВГнг-LS 3x1,5 — аналог",
+      "category": "Кабель и провод",
+      "brand": "AlternateDemo",
+      "characteristics": {"cores": 3, "cross_section_mm2": 1.5, "material": "медь"},
+      "cached_price": "910.00",
+      "cached_stock_by_location": {"Астана": 18},
+      "cached_available": true,
+      "certificates": [],
+      "source_fields": {"data_origin": "mock/demo", "compatibility_profile": "demo cable 3x1.5"}
     }
   ],
   "unknown_sku_examples": ["DEMO-UNKNOWN-404"]

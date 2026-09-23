@@ -71,9 +71,11 @@ class FakeCatalogService:
 class MockLLM:
     def __init__(self) -> None:
         self.attachment_data = None
+        self.calls = 0
 
     async def analyze(self, history, attachment_data=None):
         del history
+        self.calls += 1
         self.attachment_data = attachment_data
         return ChatAnalysis(intent=ChatIntent.FIND_PRODUCT, article="A-1")
 
@@ -152,7 +154,8 @@ async def test_extracted_attachment_is_used_for_catalog_and_current_ekt_check(
         ChatMessageCreate(content="Подбери товары из файла", attachment_ids=[attachment_id]),
     )
 
-    assert llm.attachment_data[0].text == extracted.text
+    assert llm.calls == 0
+    assert llm.attachment_data is None
     assert reply.attachment_items[0].article == "A-1"
     assert reply.attachment_items[0].quantity == 2
     assert reply.attachment_items[0].current_data["current"] is True

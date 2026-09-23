@@ -23,8 +23,10 @@ def local_product(article: str, *, name: str = "Cable", characteristics: dict | 
 class FakeCatalogRepository:
     def __init__(self, products):
         self.products = products
+        self.upsert_calls = []
 
     async def upsert(self, payload):
+        self.upsert_calls.append(payload.article)
         return local_product(payload.article, name=payload.name, characteristics=payload.characteristics)
 
     async def find_by_article(self, article):
@@ -131,3 +133,11 @@ async def test_storefront_lists_index_without_claiming_freshness() -> None:
     assert "fresh" not in result.candidates[0].model_dump()
     with pytest.raises(ValueError):
         await service.list_products(limit=101)
+async def test_fresh_read_can_skip_index_persistence_inside_another_transaction() -> None:
+    repository = FakeCatalogRepository([])
+    service = CatalogService(repository, adapter=CurrentAdapter())
+
+    product = await service.get_fresh_product("A-1", persist=False)
+
+    assert product.fresh is True
+    assert repository.upsert_calls == []

@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 from app.schemas.analogs import AnalogSearchResult, AnalogSuggestion
 from app.schemas.catalog import FreshCatalogProduct
 from app.services.catalog import CatalogService
-from app.services.compatibility import CompatibilityRules, DemoCompatibilityRules
+from app.services.compatibility import CompatibilityRules, UnavailableCompatibilityRules
 from app.services.errors import ApplicationError, ResourceNotFound
 
 
@@ -16,7 +16,7 @@ class AnalogService:
 
     def __init__(self, catalog: CatalogService, rules: CompatibilityRules | None = None) -> None:
         self._catalog = catalog
-        self._rules = rules or DemoCompatibilityRules()
+        self._rules = rules or UnavailableCompatibilityRules()
 
     async def find_analogs(self, article: str, *, limit: int = 10) -> AnalogSearchResult:
         source = await self._catalog.get_fresh_product(article)

@@ -37,9 +37,9 @@
 
 ## Ограничение интеграции EKT
 
-Существующая документация не подтверждает endpoint корзины EKT. `UnavailableCartGateway` — default и намеренно возвращает безопасную ошибку, не симулируя запись. `MockCartGateway` доступен только при явном `CART_ADAPTER_MODE=mock`; он хранит demo-корзины в памяти процесса, строит `mock://` ссылку и не является интеграцией ekt.kz.
+Существующая документация не подтверждает endpoint корзины EKT. `UnavailableCartGateway` — единственная runtime-реализация и намеренно возвращает безопасную ошибку, не симулируя запись.
 
-Production gateway следует реализовать только после получения partner contract: как определить владельца/корзину, add и update semantics, read-back состояния, подтверждённую ссылку, авторизацию, format результата, idempotency key и поведение при timeout после write. Нельзя угадывать эти endpoints или переносить mock URL в production.
+Production gateway следует реализовать только после получения partner contract: как определить владельца/корзину, add и update semantics, read-back состояния, подтверждённую ссылку, авторизацию, format результата, idempotency key и поведение при timeout после write. Нельзя угадывать эти endpoints.
 
 ## Очистка
 

@@ -165,7 +165,7 @@ async def test_missing_certificate_field_is_reported_as_missing_not_absent_certi
     assert "не предоставил данные" in reply.assistant_message.content
 
 
-async def test_purchase_conditions_come_from_explicit_demo_provider() -> None:
+async def test_purchase_conditions_report_unavailable_without_approved_provider() -> None:
     repository, catalog = SessionRepository(), DialogueCatalog()
     session_id = next(iter(repository.session_ids))
     service = ChatService(repository, catalog, UnusedLLM())
@@ -173,8 +173,6 @@ async def test_purchase_conditions_come_from_explicit_demo_provider() -> None:
     reply = await service.send_message(session_id, ChatMessageCreate(content="Какие условия доставки и оплаты?"))
 
     assert reply.purchase_conditions is not None
-    assert reply.purchase_conditions.is_demo is True
-    assert "DEMO" in reply.assistant_message.content
     assert "не предоставлены" in reply.assistant_message.content
 
 

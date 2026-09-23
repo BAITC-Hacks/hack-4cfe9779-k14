@@ -11,7 +11,7 @@ Project-provided materials from the earlier MVP brief confirm Basic Auth and the
 
 The exact response envelopes, field names/types, pagination termination metadata, currency/price semantics, stock representation, rate limits, and cart endpoints are not present in the repository. They must be obtained from the ekt.kz partner documentation. No cart read/write methods are implemented because no cart endpoint is confirmed.
 
-The adapter deliberately requires an `EktResponseMapper` in its constructor. Implement `parse_products_page(payload)` and `parse_product_detail(payload)` only after obtaining the actual JSON schema. The mapper converts partner JSON into the strict internal Pydantic `EktProduct`; no external-format dictionaries should be passed into route or service code. The test mapper is illustrative mock data, not an assertion about ekt.kz.
+The adapter deliberately requires an `EktResponseMapper` in its constructor. Implement `parse_products_page(payload)` and `parse_product_detail(payload)` only after obtaining the actual JSON schema. The mapper converts partner JSON into the strict internal Pydantic `EktProduct`; no external-format dictionaries should be passed into route or service code.
 
 For each optional mapped field, the real mapper must set `source_field_presence`: `false` means the partner omitted the field, while `true` together with `null`, `0` or `[]` preserves the source's actual supplied value. Do not fill missing category, certificates, price, stock or availability values with defaults.
 
@@ -33,7 +33,8 @@ Set these server environment variables (or corresponding entries in the ignored 
 - `EKT_API_USERNAME` — partner Basic Auth username.
 - `EKT_API_PASSWORD` — partner Basic Auth password.
 - `EKT_READ_RETRY_COUNT` and `EKT_RETRY_BACKOFF_SECONDS` — bounded GET retry policy.
-- `CATALOG_ADAPTER_MODE` — `mock` by default; `ekt` remains unavailable until the partner mapper is implemented.
+
+Until the mapper is implemented and reviewed, `build_catalog_adapter()` returns `UnavailableCatalogAdapter`; there is no runtime sample dataset.
 
 Credentials are read by Pydantic Settings and passed to `httpx.BasicAuth` server-side. They are not returned to clients. Error logs include an event type, operation, HTTP status, and exception class only; they omit URLs, headers, bodies, and credentials. Redirects are disabled so Basic Auth is not forwarded to a redirect target. Timeouts default to 8 seconds overall and 3 seconds for connection establishment.
 

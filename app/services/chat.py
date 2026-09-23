@@ -30,7 +30,7 @@ from app.services.dialogue_router import DeterministicDialogueRouter, DialogueCo
 from app.services.errors import ApplicationError, ResourceNotFound
 from app.schemas.offers import CreateOfferRequest, PendingOfferView
 from app.services.offers import OfferProposalCreator
-from app.services.purchase_conditions import DemoPurchaseConditionsProvider, PurchaseConditionsProvider
+from app.services.purchase_conditions import PurchaseConditionsProvider, UnavailablePurchaseConditionsProvider
 
 
 @dataclass
@@ -65,7 +65,7 @@ class ChatService:
         self._attachments = attachments
         self._attachment_parser = attachment_parser or AttachmentItemParser()
         self._router = router or DeterministicDialogueRouter()
-        self._purchase_conditions = purchase_conditions or DemoPurchaseConditionsProvider()
+        self._purchase_conditions = purchase_conditions or UnavailablePurchaseConditionsProvider()
         self._analogs = analogs
         self._offer_proposals = offer_proposals
         self._history_limit = get_settings().llm_history_message_limit
@@ -310,8 +310,8 @@ class ChatService:
 
     @staticmethod
     def _conditions_reply(conditions: PurchaseConditions) -> str:
-        if conditions.is_demo:
-            return conditions.notice or "DEMO: условия покупки требуют подтверждения."
+        if conditions.payment_methods is None and conditions.delivery is None and conditions.minimum_order is None:
+            return conditions.notice or "Утверждённые условия покупки недоступны."
         parts = [f"Источник условий: {conditions.source_label}."]
         if conditions.payment_methods is not None:
             parts.append(f"Оплата: {', '.join(conditions.payment_methods) or 'не указана'}.")

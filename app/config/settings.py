@@ -1,5 +1,4 @@
 from functools import lru_cache
-from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,8 +15,6 @@ class Settings(BaseSettings):
     ekt_api_password: SecretStr | None = None
     ekt_read_retry_count: int = Field(default=1, ge=0, le=3)
     ekt_retry_backoff_seconds: float = Field(default=0.05, ge=0, le=5)
-    catalog_adapter_mode: str = "mock"
-    catalog_mock_data_path: str | None = None
     llm_api_url: str | None = None
     llm_api_key: SecretStr | None = None
     llm_model: str = ""
@@ -26,8 +23,6 @@ class Settings(BaseSettings):
     llm_history_message_limit: int = 12
     pending_offer_ttl_seconds: int = 300
     idempotency_key_ttl_seconds: int = 86400
-    # `mock` is development-only demo data; no real cart integration exists yet.
-    cart_adapter_mode: Literal["unavailable", "mock"] = "unavailable"
     attachment_max_bytes: int = 10 * 1024 * 1024
     attachment_max_xlsx_sheets: int = 20
     attachment_max_xlsx_rows: int = 10000

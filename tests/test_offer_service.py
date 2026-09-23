@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.integrations.cart_gateway import MockCartGateway, UnavailableCartGateway
+from app.integrations.cart_gateway import UnavailableCartGateway
 from app.integrations.ekt_client import EktConnectionError, EktProduct
 from app.schemas.offers import CartItem, CartReference, CartSnapshot, CartWriteResult, CreateOfferRequest, PendingOfferStatus
 from app.services.offers import OfferService
@@ -221,29 +221,8 @@ async def test_unavailable_production_gateway_never_claims_a_mock_cart_write() -
     assert result.cart is None and result.cart_url is None
 
 
-async def test_mock_cart_is_session_bound_idempotent_and_readable() -> None:
-    cart = MockCartGateway()
-    first, second = uuid4(), uuid4()
-    first_cart = await cart.resolve_cart(session_id=first)
-    second_cart = await cart.resolve_cart(session_id=second)
-
-    initial = await cart.add_item(
-        cart=first_cart, product_identifier="product-1", quantity=2, idempotency_key="operation-1",
-    )
-    repeated = await cart.add_item(
-        cart=first_cart, product_identifier="product-1", quantity=2, idempotency_key="operation-1",
-    )
-    await cart.set_item_quantity(
-        cart=second_cart, product_identifier="product-1", quantity=4, idempotency_key="operation-2",
-    )
-
-    assert initial == repeated
-    assert (await cart.get_cart(cart=first_cart)).items == [CartItem(product_identifier="product-1", quantity=2)]
-    assert (await cart.get_cart(cart=second_cart)).items == [CartItem(product_identifier="product-1", quantity=4)]
-
-
 async def test_same_client_key_for_different_offers_uses_distinct_cart_operations() -> None:
-    repository, ekt, cart = FakeOfferRepository(), FakeEkt(), MockCartGateway()
+    repository, ekt, cart = FakeOfferRepository(), FakeEkt(), FakeCart()
     service = OfferService(repository, ekt, cart)
     session_id = uuid4()
     first = await create_offer(service, session_id)
@@ -252,8 +231,8 @@ async def test_same_client_key_for_different_offers_uses_distinct_cart_operation
     await service.confirm_offer(session_id, first.offer_id, "same-client-key")
     await service.confirm_offer(session_id, second.offer_id, "same-client-key")
 
-    current_cart = await cart.get_cart(cart=await cart.resolve_cart(session_id=session_id))
-    assert current_cart.items == [CartItem(product_identifier="product-1", quantity=4)]
+    assert len(cart.calls) == 2
+    assert cart.calls[0]["idempotency_key"] != cart.calls[1]["idempotency_key"]
 
 
 async def test_price_change_creates_new_offer_and_requires_new_confirmation() -> None:

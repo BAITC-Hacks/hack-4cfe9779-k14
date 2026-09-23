@@ -14,7 +14,6 @@
 - `alembic` — миграции схемы.
 - `widget` — статический browser chat widget; Nginx проксирует его `/api`-запросы к backend.
 - `api` — API boundary и HTTP-документация; исполняемый Python-пакет остаётся в `app`, чтобы не ломать существующую архитектуру.
-- `testdata` — явно обозначенные mock/demo данные, не являющиеся данными ekt.kz.
 
 Каталог хранит характеристики в PostgreSQL `JSONB`, имеет уникальный индексированный артикул и полнотекстовый `tsvector` с GIN-индексом. Триггер PostgreSQL обновляет поисковый вектор при изменении товара. Временные предложения и ключи идемпотентности имеют `created_at`, `expires_at` и индексы истечения срока для последующей очистки.
 
@@ -123,15 +122,12 @@ pytest
 | `EKT_API_PASSWORD` | Basic Auth пароль, только сервер | не задан |
 | `EKT_READ_RETRY_COUNT` | Число повторов безопасных EKT GET | `1` |
 | `EKT_RETRY_BACKOFF_SECONDS` | Базовая задержка между GET retry | `0.05` |
-| `CATALOG_ADAPTER_MODE` | Источник каталога: `mock` или `ekt` | `mock` |
-| `CATALOG_MOCK_DATA_PATH` | Необязательный путь к demo JSON | встроенный `testdata/mock_catalog.json` |
 | `LLM_API_URL` | URL OpenAI-compatible LLM endpoint, только сервер | не задан |
 | `LLM_API_KEY` | API key LLM, только сервер | не задан |
 | `LLM_MODEL` | Имя модели | не задан |
 | `LLM_HISTORY_MESSAGE_LIMIT` | Максимум сообщений, передаваемых LLM | `12` |
 | `PENDING_OFFER_TTL_SECONDS` | Срок явного подтверждения предложения | `300` |
 | `IDEMPOTENCY_KEY_TTL_SECONDS` | Срок хранения результата подтверждения | `86400` |
-| `CART_ADAPTER_MODE` | `unavailable` (безопасный default) или явный local `mock` | `unavailable` |
 | `ATTACHMENT_MAX_BYTES` | Максимальный размер загрузки | `10485760` |
 | `ATTACHMENT_LLM_MAX_CHARS` | Общий лимит извлечённого текста для LLM | `12000` |
 | `ATTACHMENT_TTL_SECONDS` | Срок хранения нормализованных attachment-данных | `86400` |
@@ -141,19 +137,19 @@ Compose defaults предназначены для локальной разра
 
 ## Интеграция ekt.kz
 
-`EktClient` находится в `app/integrations/ekt_client.py`. Credentials `EKT_API_USERNAME` и `EKT_API_PASSWORD` читаются только сервером из environment/`.env`; Compose не отправляет Basic Auth в браузер. Известные GET-пути описаны в `docs/ekt-integration.md`. Формат JSON неизвестен, поэтому адаптер принимает `EktResponseMapper`, который должен быть реализован по документации партнёра. Корзина не подключена: endpoints корзины в материалах не найдены. Mock HTTP tests запускаются вместе с `pytest`.
+`EktClient` находится в `app/integrations/ekt_client.py`. Credentials `EKT_API_USERNAME` и `EKT_API_PASSWORD` читаются только сервером из environment/`.env`; Compose не отправляет Basic Auth в браузер. Известные GET-пути описаны в `docs/ekt-integration.md`. Формат JSON неизвестен, поэтому runtime использует `UnavailableCatalogAdapter` до реализации подтверждённого `EktResponseMapper`. Корзина не подключена: endpoints корзины в материалах не найдены.
 
 Логи приложения выводятся как JSON. Ошибки EKT содержат только тип события, операцию, HTTP-статус и тип исключения; Basic Auth, тела запросов и ответов не логируются.
 
 ## Каталог и поиск
 
-`CatalogService` использует один `CatalogAdapter` и скрывает от API/чата как SQLAlchemy, так и источник данных. Локальный PostgreSQL — заменяемый поисковый индекс, а `MockCatalogAdapter` — локальный default. После миграций Compose синхронизирует demo-набор в индекс. Точный SKU имеет приоритет; неизвестный SKU не превращается в похожий товар. Обычный текст ищется по названию, категории, описанию, бренду, характеристикам и релевантным source fields через PostgreSQL FTS, а фильтр `characteristics` работает через JSONB containment.
+`CatalogService` использует один `CatalogAdapter` и скрывает от API/чата как SQLAlchemy, так и источник данных. Локальный PostgreSQL — заменяемый поисковый индекс. Пока EKT JSON mapper не подтверждён, runtime использует `UnavailableCatalogAdapter`, а поиск по не загруженному каталогу возвращает пустой результат. Точный SKU имеет приоритет; неизвестный SKU не превращается в похожий товар. Обычный текст ищется по названию, категории, описанию, бренду, характеристикам и релевантным source fields через PostgreSQL FTS, а фильтр `characteristics` работает через JSONB containment.
 
 Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Для изменяемых сведений используйте `CatalogService.get_fresh_product(article)` или `get_current_availability(article)`: они обращаются к adapter и не подставляют локальный cache при ошибке источника. Полный контракт и endpoints: [docs/catalog.md](docs/catalog.md).
 
-Подбор аналогов вынесен в `AnalogService`: сначала свежие карточки проходят fail-closed compatibility filters по категории и обязательным техническим параметрам, затем оставшиеся кандидаты ранжируются по совпадениям и названию. Похожее название само по себе не является заменой. Текущие правила кабелей относятся только к mock/demo данным и не утверждены для ekt.kz; необходимые production-критерии и формат explanation описаны в [docs/analog-replacements.md](docs/analog-replacements.md).
+Подбор аналогов вынесен в `AnalogService`: сначала свежие карточки проходят fail-closed compatibility filters по категории и обязательным техническим параметрам, затем оставшиеся кандидаты ранжируются по совпадениям и названию. Похожее название само по себе не является заменой. Пока партнёр не утвердил правила, `UnavailableCompatibilityRules` не предлагает аналоги. Необходимые production-критерии и формат explanation описаны в [docs/analog-replacements.md](docs/analog-replacements.md).
 
-Внутренняя модель включает артикул, название, категорию, характеристики, кэшированные остатки по складам, цену, доступность, сертификаты и `source_fields` для дополнительных нормализованных полей. `source_field_presence` различает отсутствие ключа в источнике и переданное значение `null`/`0`/`[]`. [Синтетический demo-каталог](docs/mock-data.md) используется только mock adapter'ом и не является актуальным EKT-источником.
+Внутренняя модель включает артикул, название, категорию, характеристики, кэшированные остатки по складам, цену, доступность, сертификаты и `source_fields` для дополнительных нормализованных полей. `source_field_presence` различает отсутствие ключа в источнике и переданное значение `null`/`0`/`[]`.
 
 ## Чат и LLM
 
@@ -165,11 +161,11 @@ API чата создаёт сессии, сохраняет user/assistant со
 
 `ChatService` зависит от абстрактного `LLMClient`, а текущая реализация использует настраиваемый OpenAI-compatible HTTP endpoint без SDK. Модель выдаёт валидируемый Pydantic structured output, но не получает доступ к PostgreSQL, ekt.kz или корзине. Для cart intent сервер может создать только `pending_offer` по своей свежей карточке и количеству; у LLM нет cart gateway или confirm-operation. Корзина не изменяется ни при каком ответе LLM. Лимит истории и необходимые environment variables приведены в [docs/chat-flow.md](docs/chat-flow.md).
 
-Диалог хранит историю строго внутри `chat session`. Детерминированный router обрабатывает SKU, характеристики, наличие, сертификаты, цены, аналоги и условия покупки; для свободного текста LLM остаётся только provider-isolated классификатором. Любые факты о товаре берутся исключительно из `CatalogService`: свежие сертификаты/характеристики — через adapter details, наличие/цена — через current availability. Аналоги дополнительно проходят `AnalogService` compatibility filters до ranking. Несколько кандидатов вызывают уточнение, а не автоматический выбор. [Условия покупки](docs/purchase-conditions.md) читаются из отдельного reviewable provider; текущие demo placeholders не являются условиями ekt.kz.
+Диалог хранит историю строго внутри `chat session`. Детерминированный router обрабатывает SKU, характеристики, наличие, сертификаты, цены, аналоги и условия покупки; для свободного текста LLM остаётся только provider-isolated классификатором. Любые факты о товаре берутся исключительно из `CatalogService`: свежие сертификаты/характеристики — через adapter details, наличие/цена — через current availability. Аналоги дополнительно проходят `AnalogService` compatibility filters до ranking. Несколько кандидатов вызывают уточнение, а не автоматический выбор. [Условия покупки](docs/purchase-conditions.md) читаются из отдельного reviewable provider; до утверждённого источника они возвращаются как недоступные.
 
 ## Подтверждение корзины
 
-Предложение создаётся через `POST /api/chat/sessions/{session_id}/offers`, а подтверждение требует конкретный `offer_id` и `Idempotency-Key` в `POST /api/chat/sessions/{session_id}/offers/{offer_id}/confirm`. Сервис блокирует предложение в транзакции, повторно проверяет EKT и выполняет cart write только при неизменных цене и остатке. После write он обязательно читает корзину и подтверждает результат только по фактической позиции/количеству. При смене цены создаётся новый offer; при недоступности EKT, недостатке остатка, ошибке корзины или несоответствии read-back запись не считается успешной. Production cart adapter не подключён: default `unavailable`; явный `mock` предназначен только для local demo. Полный transaction flow: [docs/offer-confirmation-flow.md](docs/offer-confirmation-flow.md).
+Предложение создаётся через `POST /api/chat/sessions/{session_id}/offers`, а подтверждение требует конкретный `offer_id` и `Idempotency-Key` в `POST /api/chat/sessions/{session_id}/offers/{offer_id}/confirm`. Сервис блокирует предложение в транзакции, повторно проверяет EKT и выполняет cart write только при неизменных цене и остатке. После write он обязательно читает корзину и подтверждает результат только по фактической позиции/количеству. При смене цены создаётся новый offer; при недоступности EKT, недостатке остатка, ошибке корзины или несоответствии read-back запись не считается успешной. Пока cart contract не получен, runtime gateway явно недоступен. Полный transaction flow: [docs/offer-confirmation-flow.md](docs/offer-confirmation-flow.md).
 
 ## Вложения
 

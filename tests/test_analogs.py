@@ -8,10 +8,16 @@ import pytest
 from app.schemas.catalog import CatalogCandidate, CatalogSearchResponse, CurrentAvailability, FreshCatalogProduct
 from app.schemas.chat import ChatMessageCreate, ChatRole
 from app.services.analogs import AnalogService
+from app.services.compatibility import ConfiguredCompatibilityRules
 from app.services.chat import ChatService
 from app.services.errors import ResourceNotFound
 
 pytestmark = pytest.mark.asyncio
+
+TEST_RULES = ConfiguredCompatibilityRules(
+    {"Кабель и провод": {"required_characteristics": ("material", "cores", "cross_section_mm2"), "optional_characteristics": ()}},
+    "test-only approved profile",
+)
 
 
 def product(
@@ -84,7 +90,7 @@ async def test_compatible_candidate_survives_before_ranking_and_similar_incompat
         characteristics={"material": "алюминий", "cores": 3, "cross_section_mm2": 1.5},
     )
 
-    result = await AnalogService(InMemoryCatalog([source, good, similar_name_but_two_cores, different_material])).find_analogs("SRC-1")
+    result = await AnalogService(InMemoryCatalog([source, good, similar_name_but_two_cores, different_material]), TEST_RULES).find_analogs("SRC-1")
 
     assert result.source_in_stock is False
     assert [item.product.article for item in result.candidates] == ["ALT-1"]
@@ -107,7 +113,7 @@ async def test_multiple_compatible_candidates_are_ranked_only_after_filters() ->
         characteristics={"material": "медь", "cores": 3, "cross_section_mm2": 2.5},
     )
 
-    result = await AnalogService(InMemoryCatalog([source, farther, rejected, closer])).find_analogs("SRC-1")
+    result = await AnalogService(InMemoryCatalog([source, farther, rejected, closer]), TEST_RULES).find_analogs("SRC-1")
 
     assert [item.product.article for item in result.candidates] == ["ALT-CLOSER", "ALT-FARTHER"]
     assert all(item.product.article != "BAD-SECTION" for item in result.candidates)
@@ -121,7 +127,7 @@ async def test_missing_critical_characteristic_fails_closed_and_no_analog_is_ret
         characteristics={"material": "медь", "cores": 3},
     )
 
-    result = await AnalogService(InMemoryCatalog([source, missing_section])).find_analogs("SRC-1")
+    result = await AnalogService(InMemoryCatalog([source, missing_section]), TEST_RULES).find_analogs("SRC-1")
 
     assert result.candidates == []
 
@@ -133,7 +139,7 @@ async def test_missing_source_critical_characteristic_and_no_profile_never_infer
     candidate_item = product("ALT-1", "Кабель", available=True)
     no_category = product("SRC-NO-CATEGORY", "Кабель", available=False, category=None)
 
-    service = AnalogService(InMemoryCatalog([missing_source_data, candidate_item, no_category]))
+    service = AnalogService(InMemoryCatalog([missing_source_data, candidate_item, no_category]), TEST_RULES)
 
     assert (await service.find_analogs("SRC-MISSING")).candidates == []
     assert (await service.find_analogs("SRC-NO-CATEGORY")).candidates == []
@@ -177,7 +183,7 @@ async def test_out_of_stock_dialogue_offers_only_compatible_analogs() -> None:
     )
     repository = SessionRepository()
     catalog = InMemoryCatalog([source, good, bad])
-    service = ChatService(repository, catalog, UnusedLLM(), analogs=AnalogService(catalog))
+    service = ChatService(repository, catalog, UnusedLLM(), analogs=AnalogService(catalog, TEST_RULES))
 
     await service.send_message(repository.session_id, ChatMessageCreate(content="Найди SRC-1"))
     reply = await service.send_message(repository.session_id, ChatMessageCreate(content="А наличие?"))
@@ -193,7 +199,7 @@ async def test_zero_stock_without_availability_flag_still_allows_safe_analog_sug
     good = product("ALT-1", "Кабель ВВГнг-LS 3x1,5 аналог", available=True)
     repository = SessionRepository()
     catalog = InMemoryCatalog([source, good])
-    service = ChatService(repository, catalog, UnusedLLM(), analogs=AnalogService(catalog))
+    service = ChatService(repository, catalog, UnusedLLM(), analogs=AnalogService(catalog, TEST_RULES))
 
     await service.send_message(repository.session_id, ChatMessageCreate(content="Найди SRC-1"))
     reply = await service.send_message(repository.session_id, ChatMessageCreate(content="Остаток?"))
@@ -209,9 +215,19 @@ async def test_analog_request_reports_honestly_when_no_candidate_passes_filters(
     )
     repository = SessionRepository()
     catalog = InMemoryCatalog([source, incompatible])
-    service = ChatService(repository, catalog, UnusedLLM(), analogs=AnalogService(catalog))
+    service = ChatService(repository, catalog, UnusedLLM(), analogs=AnalogService(catalog, TEST_RULES))
 
     reply = await service.send_message(repository.session_id, ChatMessageCreate(content="Найди аналог SRC-1"))
 
     assert reply.analogs == []
     assert "не найдено" in reply.assistant_message.content
+
+
+async def test_default_rules_do_not_offer_analogs_without_partner_approval() -> None:
+    source = product("SRC-1", "Кабель", available=False)
+    candidate_item = product("ALT-1", "Кабель", available=True)
+
+    result = await AnalogService(InMemoryCatalog([source, candidate_item])).find_analogs("SRC-1")
+
+    assert result.candidates == []
+    assert result.rules_source == "unavailable/no approved compatibility rules"

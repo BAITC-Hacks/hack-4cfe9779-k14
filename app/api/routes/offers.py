@@ -20,9 +20,7 @@ router = APIRouter(prefix="/api/chat/sessions/{session_id}/offers", tags=["offer
 
 
 async def get_offer_service(session: AsyncSession = Depends(get_db)) -> AsyncGenerator[OfferService, None]:
-    # A real EKT mapper and cart gateway must be injected after partner API
-    # documentation is available. The default gateway never writes a cart;
-    # CART_ADAPTER_MODE=mock is explicit local demo infrastructure only.
+    # No real EKT mapper or cart contract is available yet; both adapters fail closed.
     catalog = CatalogService(CatalogRepository(session), adapter=build_catalog_adapter())
     yield OfferService(OfferRepository(session), CatalogCurrentProductProvider(catalog), build_cart_gateway())
 

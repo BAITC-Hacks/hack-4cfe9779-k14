@@ -1,16 +1,15 @@
 # Каталог, adapter и поиск
 
-`CatalogService` — единственная точка доступа dialogue layer к каталогу. Он получает данные через `CatalogAdapter`, поэтому локальный PostgreSQL-индекс, mock dataset и будущий EKT transport не проникают в чат или маршруты.
+`CatalogService` — единственная точка доступа dialogue layer к каталогу. Он получает данные через `CatalogAdapter`, поэтому локальный PostgreSQL-индекс и будущий EKT transport не проникают в чат или маршруты.
 
 ## Adapter
 
 `CatalogAdapter` поддерживает точный артикул, свежую карточку по partner id и постраничную выгрузку. Реализации:
 
-- `MockCatalogAdapter` читает только [`testdata/mock_catalog.json`](../testdata/mock_catalog.json); это default для локального запуска;
 - `EktCatalogAdapter` оборачивает существующий `EktClient` и использует лишь документированные GET-пути. Его можно создать только с подтверждённым `EktResponseMapper`;
-- `UnavailableCatalogAdapter` возвращает безопасную нормализованную ошибку при `CATALOG_ADAPTER_MODE=ekt`, пока mapper не реализован.
+- `UnavailableCatalogAdapter` — единственная runtime-реализация до появления mapper и возвращает безопасную нормализованную ошибку.
 
-`python -m app.catalog_sync` или `POST /api/catalog/index/refresh` обновляет индекс страницами. Docker Compose выполняет синхронизацию после миграций, поэтому demo-поиск готов сразу после старта.
+`python -m app.catalog_sync` или `POST /api/catalog/index/refresh` обновляет индекс страницами только после подключения утверждённого adapter. Docker Compose не синхронизирует каталог без такого adapter.
 
 ## Модель и неизвестные значения
 
@@ -29,7 +28,7 @@
 
 ## Аналоги и замены
 
-Подбор замен находится в отдельном `AnalogService` поверх `CatalogService`. Он сначала получает свежие карточки, применяет fail-closed правила `CompatibilityRules` по категории и обязательным техническим параметрам, затем ранжирует только допущенные позиции. Сходство названия не может обойти compatibility filter. Каждый результат содержит структурированное объяснение совпадений, различий и неизвестных полей. Текущие правила кабелей — только demo для mock dataset; подробности и необходимый production-контракт описаны в [analog-replacements.md](analog-replacements.md).
+Подбор замен находится в отдельном `AnalogService` поверх `CatalogService`. Он сначала получает свежие карточки, применяет fail-closed правила `CompatibilityRules` по категории и обязательным техническим параметрам, затем ранжирует только допущенные позиции. Сходство названия не может обойти compatibility filter. Каждый результат содержит структурированное объяснение совпадений, различий и неизвестных полей. Пока партнёр не утвердил профиль категории, `UnavailableCompatibilityRules` не предлагает замены. Подробности и необходимый production-контракт описаны в [analog-replacements.md](analog-replacements.md).
 
 ## API
 

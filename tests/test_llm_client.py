@@ -74,5 +74,6 @@ async def test_llm_receives_bounded_untrusted_attachment_data(monkeypatch: pytes
 
     attachment_message = captured["messages"][-1]["content"]
     assert "<untrusted_attachment" in attachment_message
+    assert "<extraction_warnings>" in attachment_message
     assert "A-1 2" in attachment_message
     assert "unbounded" not in attachment_message

@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.routes.health import router as health_router
@@ -46,9 +47,31 @@ async def application_error_handler(_: Request, exc: ApplicationError) -> JSONRe
     )
 
 
+@app.exception_handler(HTTPException)
+async def http_error_handler(_: Request, exc: HTTPException) -> JSONResponse:
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            code=str(detail.get("code", "http_error")),
+            message=str(detail.get("message", "Request could not be processed")),
+        ).model_dump(),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    logger.info("request_validation_failed", extra={"event": "request_validation_failed", "error_count": len(exc.errors())})
+    return JSONResponse(
+        status_code=422,
+        content=ErrorResponse(code="validation_error", message="Request validation failed").model_dump(),
+    )
+
+
 @app.exception_handler(Exception)
 async def unexpected_error_handler(_: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled application error", exc_info=exc)
+    logger.error("unhandled_application_error", extra={"event": "unhandled_application_error", "error_type": type(exc).__name__})
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(code="internal_error", message="Internal server error").model_dump(),

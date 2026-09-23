@@ -32,6 +32,11 @@ async def save_product(payload: CatalogProductUpsert, service: Catalog) -> Catal
     return await service.save_product(payload)
 
 
+@router.get("/products", response_model=CatalogSearchResponse)
+async def list_products(service: Catalog, limit: int = Query(default=100, ge=1, le=100)) -> CatalogSearchResponse:
+    return await service.list_products(limit=limit)
+
+
 @router.get("/search", response_model=CatalogSearchResponse)
 async def search_products(
     service: Catalog,

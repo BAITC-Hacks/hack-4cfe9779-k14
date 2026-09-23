@@ -62,7 +62,12 @@ const errors: Record<string, string> = {
   attachment_too_large: 'Выберите файл размером до 10 МБ.',
   attachment_processing_failed: 'Не удалось прочитать файл. Проверьте его содержимое.',
   not_found: 'Товар, вложение или сессия не найдены. Обновите страницу и повторите запрос.',
-  internal_error: 'Ошибка сервера. Проверьте доступность PostgreSQL и миграции.',
+  internal_error: 'Ошибка сервера. Повторите запрос позже.',
+}
+
+class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) { super(message); this.status = status }
 }
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -74,10 +79,10 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       headers: { ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
     })
   } catch {
-    throw new Error('Нет связи с FastAPI. Проверьте, что бэкенд запущен, и повторите запрос.')
+    throw new Error('Нет связи с сервером. Повторите запрос позже.')
   }
   const body = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(errors[body?.code] || `Сервер отклонил запрос (HTTP ${response.status}).`)
+  if (!response.ok) throw new ApiError(errors[body?.code] || `Сервер отклонил запрос (HTTP ${response.status}).`, response.status)
   if (!body) throw new Error('Сервер вернул неожиданный ответ. Проверьте адрес API.')
   return body as T
 }
@@ -97,8 +102,17 @@ export async function getSession(): Promise<string> {
 }
 
 export async function history() {
-  const id = await getSession()
-  return request<{ messages: { role: 'user' | 'assistant'; content: string }[] }>(`/chat/sessions/${id}/messages`)
+  type History = { messages: { role: 'user' | 'assistant'; content: string }[] }
+  let id = await getSession()
+  try { return await request<History>(`/chat/sessions/${id}/messages`) }
+  catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error
+    // The development database may have been recreated since the last visit.
+    try { sessionStorage.removeItem(sessionKey) } catch { /* Storage can be disabled. */ }
+    sessionPromise = undefined
+    id = await getSession()
+    return request<History>(`/chat/sessions/${id}/messages`)
+  }
 }
 
 export function toProduct(row: CatalogProduct): Product {
@@ -131,7 +145,8 @@ async function refreshCards(rows: CatalogProduct[], signal?: AbortSignal) {
 }
 
 export async function searchCatalog(query: string, signal?: AbortSignal) {
-  const data = await request<{ candidates: CatalogProduct[] }>(`/catalog/search?${new URLSearchParams({ q: query, limit: '100' })}`, { signal })
+  const path = query.trim() ? `/catalog/search?${new URLSearchParams({ q: query, limit: '100' })}` : '/catalog/products?limit=100'
+  const data = await request<{ candidates: CatalogProduct[] }>(path, { signal })
   return refreshCards(data.candidates, signal)
 }
 

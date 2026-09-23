@@ -57,6 +57,15 @@ class CatalogService:
             raise self._public_adapter_error(exc) from None
         raise CatalogDataInvalid("Catalog pagination limit was reached")
 
+    async def list_products(self, *, limit: int = 100) -> CatalogSearchResponse:
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        products = await self._repository.full_text_search(None, limit=limit)
+        return CatalogSearchResponse(
+            candidates=[CatalogCandidate.model_validate(product) for product in products],
+            match_type="catalog",
+        )
+
     async def search_candidates(
         self,
         query: str | None,

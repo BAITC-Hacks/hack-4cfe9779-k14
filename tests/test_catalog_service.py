@@ -122,3 +122,12 @@ async def test_ekt_unavailable_never_returns_cached_price_or_stock_as_current() 
     assert result.reason == "catalog_unavailable"
     assert result.price is None
     assert result.stock_by_location is None
+
+
+async def test_storefront_lists_index_without_claiming_freshness() -> None:
+    service = CatalogService(FakeCatalogRepository([local_product("A-1"), local_product("B-2")]))
+    result = await service.list_products(limit=1)
+    assert [row.article for row in result.candidates] == ["A-1"]
+    assert "fresh" not in result.candidates[0].model_dump()
+    with pytest.raises(ValueError):
+        await service.list_products(limit=101)

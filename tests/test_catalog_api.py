@@ -18,6 +18,9 @@ class ApiCatalogService:
             cached_stock_by_location=None, cached_available=None, certificates=None, source_fields=None,
         ))
 
+    async def list_products(self, *, limit=100):
+        return CatalogSearchResponse(candidates=[], match_type="catalog")
+
     async def search_candidates(self, query, *, characteristics=None, limit=20):
         return CatalogSearchResponse(candidates=[], match_type="none")
 
@@ -42,12 +45,15 @@ def test_catalog_endpoints_are_available_without_direct_orm_access() -> None:
     try:
         with TestClient(app) as client:
             created = client.post("/api/catalog/products", json={"article": "A-1", "name": "Cable"})
+            listed = client.get("/api/catalog/products")
             searched = client.get("/api/catalog/search", params={"q": "cable"})
             current = client.get("/api/catalog/products/A-1/current")
             fresh = client.get("/api/catalog/products/A-1/fresh")
             refreshed = client.post("/api/catalog/index/refresh")
         assert created.status_code == 200
         assert created.json()["article"] == "A-1"
+        assert listed.status_code == 200
+        assert listed.json()["match_type"] == "catalog"
         assert searched.status_code == 200
         assert current.status_code == 200
         assert current.json()["current"] is False

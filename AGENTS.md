@@ -22,3 +22,12 @@
 - `skills/i-have-adhd` — [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd), MIT.
 
 Оригинальные тексты лицензий находятся в каталогах навыков.
+
+## Подключённый бэкенд
+
+- FastAPI импортирован из `origin/dev2` (`711e323`); контракт и запуск — в `docs/backend.md` и `web/README.md`.
+- Маршруты в `app/api/routes`, логика в `app/services`, SQLAlchemy-запросы в `app/repositories`. Изменения схемы — через Alembic.
+- `CatalogService` — единая точка доступа к каталогу. `cached_*` из поискового индекса не выдавать за свежие цену и остатки; витрина использует `/fresh`.
+- Корзину изменяет только `OfferService` после подтверждения конкретного offer_id с `Idempotency-Key`. Заглушки реального EKT и корзины сохранены до получения контрактов партнёра.
+- Серверные ошибки имеют форму `{code, message}`. Запросы, файлы и секреты не логировать. Вложения привязаны к сессии.
+- Проверки интеграции: `.venv/bin/python -m pytest -q`, `npm test --prefix web`, `npm run build --prefix web`.

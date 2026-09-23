@@ -171,7 +171,7 @@ function App() {
     history().then(data => {
       if (cancelled) return
       if (data.messages.length) setMessages(data.messages.map(message => ({ role: message.role, text: message.content })))
-      setConnection('FastAPI · прототип')
+      setConnection('Подключено · прототип')
     }).catch(error => {
       if (!cancelled) { setConnection('Нет связи с сервером'); setMessages(current => [...current, { role: 'assistant', text: error.message }]) }
     }).finally(() => { if (!cancelled) { actionRef.current = false; setBusy(false) } })
@@ -296,7 +296,7 @@ function App() {
     try {
       if (apiEnabled) {
         const data = await sendMessage(text, attachmentIds)
-        setConnection('FastAPI · прототип')
+        setConnection('Подключено · прототип')
         append({ role: 'assistant', text: data.text, cards: data.cards })
         if (data.analysis.intent === 'add_to_cart_request' && data.analysis.article && data.analysis.quantity) {
           await offerProposal(await freshProduct(data.analysis.article), data.analysis.quantity)
@@ -349,7 +349,7 @@ function App() {
     try {
       const attachment = await uploadAttachment(file)
       const data = await sendMessage(`Найди товары из файла «${file.name}»`, [attachment.id])
-      setConnection('FastAPI · прототип')
+      setConnection('Подключено · прототип')
       append({ role: 'assistant', text: data.text, cards: data.cards })
     } catch (error) {
       append({ role: 'assistant', text: error instanceof Error ? error.message : 'Не удалось обработать файл.' })

@@ -74,6 +74,9 @@ class ChatService:
         attachment_items = await self._resolve_attachment_items(attachment_results)
         if attachment_items:
             reply_text = f"{reply_text} {self._attachment_summary(attachment_items)}"
+        attachment_notice = self._attachment_notice(attachment_results)
+        if attachment_notice:
+            reply_text = f"{reply_text} {attachment_notice}"
 
         assistant_message = await self._repository.add_message(
             session_id,
@@ -186,6 +189,18 @@ class ChatService:
         if quantity_issues:
             parts.append(f"Количества требуют уточнения: {quantity_issues}.")
         return " ".join(parts)
+
+    @staticmethod
+    def _attachment_notice(attachments: list[tuple[UUID, AttachmentResult]]) -> str:
+        warnings = {warning for _, result in attachments for warning in result.warnings}
+        notices: list[str] = []
+        if "ocr_failed" in warnings:
+            notices.append("OCR не смог распознать изображение; загрузите более чёткий файл или введите позиции текстом.")
+        elif "empty_document" in warnings:
+            notices.append("В документе не удалось распознать текст; проверьте файл или загрузите более чёткий скан.")
+        if any(warning == "pdf_may_require_ocr" or warning == "pdf_page_text_unavailable" or warning.startswith("xlsx_sheet_truncated:") for warning in warnings):
+            notices.append("Часть содержимого могла быть распознана не полностью; проверьте позиции перед продолжением.")
+        return " ".join(notices)
 
     @staticmethod
     def _current_reply(intent: ChatIntent, current: CurrentAvailability) -> str:

@@ -7,6 +7,8 @@ import pytest
 
 from app.config.settings import get_settings
 from app.integrations.llm_client import LLMStructuredOutputError, OpenAICompatibleLLMClient
+from app.schemas.attachment_parsing import AttachmentLlmContext
+from app.schemas.attachments import DocumentType
 from app.schemas.chat import ChatIntent, ChatMessageView, ChatRole
 
 pytestmark = pytest.mark.asyncio
@@ -52,3 +54,25 @@ async def test_llm_rejects_invalid_structured_output(monkeypatch: pytest.MonkeyP
     async with OpenAICompatibleLLMClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(LLMStructuredOutputError):
             await client.analyze([message("find cable")])
+
+
+async def test_llm_receives_bounded_untrusted_attachment_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_llm(monkeypatch)
+    monkeypatch.setenv("ATTACHMENT_LLM_MAX_CHARS", "5")
+    get_settings.cache_clear()
+    captured: dict = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"intent":"find_product"}'}}]})
+
+    context = AttachmentLlmContext(
+        attachment_id=uuid4(), filename="items.pdf", document_type=DocumentType.PDF, text="A-1 2 unbounded",
+    )
+    async with OpenAICompatibleLLMClient(transport=httpx.MockTransport(handler)) as client:
+        await client.analyze([message("find")], attachment_data=[context])
+
+    attachment_message = captured["messages"][-1]["content"]
+    assert "<untrusted_attachment" in attachment_message
+    assert "A-1 2" in attachment_message
+    assert "unbounded" not in attachment_message

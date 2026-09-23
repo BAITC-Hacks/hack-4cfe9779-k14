@@ -55,8 +55,9 @@ class MockLLM:
         self.error = error
         self.received_history = None
 
-    async def analyze(self, history):
+    async def analyze(self, history, attachment_data=None):
         self.received_history = history
+        self.received_attachments = attachment_data
         if self.error:
             raise self.error
         return self.analysis

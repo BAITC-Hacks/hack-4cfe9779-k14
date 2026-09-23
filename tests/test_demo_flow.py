@@ -139,7 +139,7 @@ async def test_chat_catalog_offer_confirmation_journey_uses_test_doubles() -> No
 
     reply = await chat.send_message(chat_repository.session_id, ChatMessageCreate(content="Нужен A-1, 2 штуки"))
 
-    assert reply.candidates[0]["article"] == "A-1"
+    assert reply.candidates[0].article == "A-1"
     ekt, cart = Ekt(), Cart()
     offers = OfferService(OfferRepository(), ekt, cart)
     offer = await offers.create_offer(

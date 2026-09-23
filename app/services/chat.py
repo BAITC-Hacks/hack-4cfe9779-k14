@@ -11,7 +11,14 @@ from app.repositories.chat import ChatRepository
 from app.schemas.attachment_parsing import AttachmentItemMatch, AttachmentLlmContext, ParsedAttachmentItem
 from app.schemas.analogs import AnalogSuggestion
 from app.schemas.attachments import AttachmentResult, DocumentType, ExtractedTable
-from app.schemas.catalog import CurrentAvailability, FreshCatalogProduct
+from app.schemas.catalog import (
+    CatalogCandidate,
+    CurrentAvailability,
+    CurrentProductData,
+    FreshCatalogProduct,
+    FreshProductData,
+    ProductData,
+)
 from app.schemas.chat import (
     ChatAnalysis,
     ChatHistoryResponse,
@@ -36,8 +43,8 @@ from app.services.purchase_conditions import PurchaseConditionsProvider, Unavail
 @dataclass
 class DialogueResolution:
     text: str
-    candidates: list[dict[str, Any]]
-    current_data: dict[str, Any] | None
+    candidates: list[CatalogCandidate]
+    current_data: ProductData | None
     selected_article: str | None
     purchase_conditions: PurchaseConditions | None = None
     analogs: list[AnalogSuggestion] | None = None
@@ -174,10 +181,10 @@ class ChatService:
                 analog_resolution = await self._analog_resolution(analysis.article, analysis.article)
                 return DialogueResolution(
                     f"{self._current_reply(analysis.intent, current)} {analog_resolution.text}", [],
-                    current.model_dump(mode="json"), analysis.article, analogs=analog_resolution.analogs,
+                    CurrentProductData(data=current), analysis.article, analogs=analog_resolution.analogs,
                 )
             return DialogueResolution(
-                self._current_reply(analysis.intent, current), [], current.model_dump(mode="json"),
+                self._current_reply(analysis.intent, current), [], CurrentProductData(data=current),
                 analysis.article if current.current else selected_article,
             )
         if analysis.intent in (ChatIntent.CHECK_CERTIFICATES, ChatIntent.PRODUCT_CHARACTERISTICS):
@@ -188,7 +195,7 @@ class ChatService:
                 return DialogueResolution(error, [], None, selected_article)
             assert product is not None
             text = self._certificates_reply(product) if analysis.intent == ChatIntent.CHECK_CERTIFICATES else self._characteristics_reply(product)
-            return DialogueResolution(text, [], product.model_dump(mode="json"), product.article)
+            return DialogueResolution(text, [], FreshProductData(data=product), product.article)
         if analysis.intent == ChatIntent.FOLLOW_UP:
             return DialogueResolution(
                 "Уточните, что именно хотите узнать: характеристики, наличие, сертификаты или цену.", [], None, selected_article
@@ -200,21 +207,21 @@ class ChatService:
             result = await self._catalog.search_candidates(
                 query, characteristics=analysis.search_parameters.characteristics or None,
             )
-            candidates = [candidate.model_dump(mode="json") for candidate in result.candidates]
+            candidates = result.candidates
             if not candidates:
                 return DialogueResolution(
                     "Подходящих товаров в каталоге не найдено. Уточните артикул или характеристики.", [], None, selected_article,
                 )
             if len(candidates) > 1:
-                choices = "; ".join(f"{item['name']} ({item['article']})" for item in candidates[:3])
+                choices = "; ".join(f"{item.name} ({item.article})" for item in candidates[:3])
                 return DialogueResolution(
                     f"Найдено несколько вариантов: {choices}. Укажите точный артикул нужного товара.",
                     candidates, None, None,
                 )
             product = candidates[0]
             return DialogueResolution(
-                f"Найден товар: {product['name']} ({product['article']}). Что именно хотите узнать?",
-                candidates, None, product["article"],
+                f"Найден товар: {product.name} ({product.article}). Что именно хотите узнать?",
+                candidates, None, product.article,
             )
         return DialogueResolution(
             "Я могу помочь найти товар, показать характеристики, наличие, сертификаты или условия покупки. Уточните запрос.",
@@ -428,7 +435,7 @@ class ChatService:
         if not query:
             return AttachmentItemMatch.model_validate(item.model_dump() | {"warnings": [*item.warnings, "item_unrecognized"]})
         search = await self._catalog.search_candidates(query)
-        candidates = [candidate.model_dump(mode="json") for candidate in search.candidates]
+        candidates = search.candidates
         warnings = list(item.warnings)
         if not candidates:
             warnings.append("unknown_article" if item.article else "unknown_product")
@@ -436,9 +443,11 @@ class ChatService:
         if len(candidates) > 1:
             warnings.append("product_ambiguous")
             return AttachmentItemMatch.model_validate(item.model_dump() | {"candidates": candidates, "warnings": warnings})
-        current = await self._catalog.get_current_availability(candidates[0]["article"])
+        current = await self._catalog.get_current_availability(candidates[0].article)
         return AttachmentItemMatch.model_validate(item.model_dump() | {
-            "candidates": candidates, "current_data": current.model_dump(mode="json"), "warnings": warnings,
+            "candidates": candidates,
+            "current_data": CurrentProductData(data=current).model_dump(mode="json"),
+            "warnings": warnings,
         })
 
     @staticmethod

@@ -1,9 +1,9 @@
-from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from app.schemas.attachments import DocumentType
+from app.schemas.catalog import CatalogCandidate, ProductData
 
 
 class AttachmentLlmContext(BaseModel):
@@ -23,5 +23,5 @@ class ParsedAttachmentItem(BaseModel):
 
 
 class AttachmentItemMatch(ParsedAttachmentItem):
-    candidates: list[dict[str, Any]] = Field(default_factory=list)
-    current_data: dict[str, Any] | None = None
+    candidates: list[CatalogCandidate] = Field(default_factory=list)
+    current_data: ProductData | None = None

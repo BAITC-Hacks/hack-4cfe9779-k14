@@ -1,5 +1,6 @@
 from decimal import Decimal
-from typing import Any
+from enum import StrEnum
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -49,7 +50,13 @@ class CatalogCandidate(BaseModel):
 
 class CatalogSearchResponse(BaseModel):
     candidates: list[CatalogCandidate]
-    match_type: str
+    match_type: "CatalogMatchType"
+
+
+class CatalogMatchType(StrEnum):
+    NONE = "none"
+    EXACT_ARTICLE = "exact_article"
+    FULL_TEXT = "full_text"
 
 
 class CurrentAvailability(BaseModel):
@@ -76,3 +83,20 @@ class FreshCatalogProduct(CatalogProductUpsert):
     """A directly refreshed adapter response, never a local-cache fallback."""
 
     fresh: bool = True
+
+
+class CurrentProductData(BaseModel):
+    """A discriminated current-data payload for browser clients."""
+
+    kind: Literal["current_availability"] = "current_availability"
+    data: CurrentAvailability
+
+
+class FreshProductData(BaseModel):
+    """A discriminated fresh-product payload for browser clients."""
+
+    kind: Literal["fresh_product"] = "fresh_product"
+    data: FreshCatalogProduct
+
+
+ProductData = Annotated[CurrentProductData | FreshProductData, Field(discriminator="kind")]

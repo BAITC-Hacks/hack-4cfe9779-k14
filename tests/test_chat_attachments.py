@@ -59,7 +59,10 @@ class FakeCatalogService:
 
     async def search_candidates(self, query, *, characteristics=None, limit=20):
         del characteristics, limit
-        return CatalogSearchResponse(candidates=[self.candidate] if query == "A-1" else [], match_type="article")
+        return CatalogSearchResponse(
+            candidates=[self.candidate] if query == "A-1" else [],
+            match_type="exact_article" if query == "A-1" else "none",
+        )
 
     async def get_current_availability(self, article):
         self.current_articles.append(article)
@@ -155,7 +158,9 @@ async def test_extracted_attachment_is_used_for_catalog_and_current_ekt_check(
     assert llm.attachment_data[0].text == extracted.text
     assert reply.attachment_items[0].article == "A-1"
     assert reply.attachment_items[0].quantity == 2
-    assert reply.attachment_items[0].current_data["current"] is True
+    assert reply.attachment_items[0].current_data is not None
+    assert reply.attachment_items[0].current_data.kind == "current_availability"
+    assert reply.attachment_items[0].current_data.data.current is True
     assert catalog.current_articles == ["A-1"]
     assert "распознано позиций: 1" in reply.assistant_message.content
 

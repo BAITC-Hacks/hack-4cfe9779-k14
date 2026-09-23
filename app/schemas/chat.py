@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.attachment_parsing import AttachmentItemMatch
 from app.schemas.analogs import AnalogSuggestion
+from app.schemas.catalog import CatalogCandidate, ProductData
 from app.schemas.offers import PendingOfferView
 from app.schemas.purchase_conditions import PurchaseConditions
 
@@ -97,8 +98,8 @@ class ChatReply(BaseModel):
     user_message: ChatMessageView
     assistant_message: ChatMessageView
     analysis: ChatAnalysis
-    candidates: list[dict[str, Any]] = Field(default_factory=list)
-    current_data: dict[str, Any] | None = None
+    candidates: list[CatalogCandidate] = Field(default_factory=list)
+    current_data: ProductData | None = None
     attachment_items: list[AttachmentItemMatch] = Field(default_factory=list)
     purchase_conditions: PurchaseConditions | None = None
     analogs: list[AnalogSuggestion] = Field(default_factory=list)

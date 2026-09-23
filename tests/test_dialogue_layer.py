@@ -114,7 +114,7 @@ async def test_sku_follow_up_certificate_uses_session_context_and_fresh_catalog_
     found = await service.send_message(session_id, ChatMessageCreate(content="Найди ABC-123"))
     certificate = await service.send_message(session_id, ChatMessageCreate(content="А сертификат у него есть?"))
 
-    assert found.candidates[0]["article"] == "ABC-123"
+    assert found.candidates[0].article == "ABC-123"
     assert "CERT-ABC" in certificate.assistant_message.content
     assert catalog.fresh_calls == ["ABC-123"]
 

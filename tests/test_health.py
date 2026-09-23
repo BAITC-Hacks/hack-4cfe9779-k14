@@ -41,6 +41,6 @@ def test_health_reports_database_unavailable() -> None:
         with TestClient(app) as client:
             response = client.get("/health")
         assert response.status_code == 503
-        assert response.json()["detail"]["code"] == "database_unavailable"
+        assert response.json()["code"] == "database_unavailable"
     finally:
         app.dependency_overrides.clear()

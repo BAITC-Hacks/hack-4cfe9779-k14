@@ -1,5 +1,6 @@
 from enum import StrEnum
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -26,3 +27,7 @@ class AttachmentResult(BaseModel):
     tables: list[ExtractedTable] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatAttachmentView(AttachmentResult):
+    id: UUID

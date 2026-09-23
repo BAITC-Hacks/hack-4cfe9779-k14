@@ -93,3 +93,9 @@ Compose defaults предназначены для локальной разра
 `EktClient` находится в `app/integrations/ekt_client.py`. Credentials `EKT_API_USERNAME` и `EKT_API_PASSWORD` читаются только сервером из environment/`.env`; Compose не отправляет Basic Auth в браузер. Известные GET-пути описаны в `docs/ekt-integration.md`. Формат JSON неизвестен, поэтому адаптер принимает `EktResponseMapper`, который должен быть реализован по документации партнёра. Корзина не подключена: endpoints корзины в материалах не найдены. Mock HTTP tests запускаются вместе с `pytest`.
 
 Логи приложения выводятся как JSON. Ошибки EKT содержат только тип события, операцию, HTTP-статус и тип исключения; Basic Auth, тела запросов и ответов не логируются.
+
+## Каталог и поиск
+
+`CatalogService` использует локальный PostgreSQL-каталог и скрывает SQLAlchemy от API и будущего чата. Точный поиск по уникальному артикулу имеет приоритет. Если точного совпадения нет, применяется полнотекстовый PostgreSQL-поиск по названию, описанию, бренду и характеристикам JSONB. Фильтр `characteristics` работает через JSONB containment; отдельный Elasticsearch/OpenSearch не используется.
+
+Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Перед предложением вызывайте `CatalogService.get_current_availability(article)`: он получает текущую карточку через `EktClient`. При недоступности ekt.kz сервис возвращает `current=false` и не подставляет локальную цену или остаток. Полный контракт и тестовые endpoints: [docs/catalog.md](docs/catalog.md).

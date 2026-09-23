@@ -216,21 +216,24 @@ class EktClient:
 
     async def check_price(self, article: str) -> EktPriceCheck:
         """Refresh product details and return the verified price if supplied."""
-        listed = await self.get_product_by_article(article)
-        current = await self.get_product_details(listed.id)
-        self._ensure_current_product_matches_listing(listed, current)
+        current = await self.get_current_product_by_article(article)
         if current.price is None:
             raise EktDataUnavailableError("Price is not available in the current product response")
         return EktPriceCheck(article=current.article, price=current.price)
 
     async def check_stock(self, article: str) -> EktStockCheck:
         """Refresh product details and return normalized per-location stock."""
-        listed = await self.get_product_by_article(article)
-        current = await self.get_product_details(listed.id)
-        self._ensure_current_product_matches_listing(listed, current)
+        current = await self.get_current_product_by_article(article)
         if current.stock_by_location is None:
             raise EktDataUnavailableError("Stock is not available in the current product response")
         return EktStockCheck(article=current.article, stock_by_location=current.stock_by_location)
+
+    async def get_current_product_by_article(self, article: str) -> EktProduct:
+        """Return a verified live product card for a locally selected article."""
+        listed = await self.get_product_by_article(article)
+        current = await self.get_product_details(listed.id)
+        self._ensure_current_product_matches_listing(listed, current)
+        return current
 
     def _ensure_current_product_matches_listing(self, listed: EktProduct, current: EktProduct) -> None:
         """Reject stale or malformed detail responses before reporting live data."""

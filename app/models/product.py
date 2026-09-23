@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Index, Numeric, String, Text, func, text
+from sqlalchemy import Boolean, DateTime, Index, Numeric, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,10 +18,14 @@ class Product(TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     article: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(128), unique=True)
     name: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    brand: Mapped[str | None] = mapped_column(String(256), index=True)
     characteristics: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}", nullable=False)
-    price: Mapped[float | None] = mapped_column(Numeric(14, 2))
+    cached_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    cached_stock_by_location: Mapped[dict | None] = mapped_column(JSONB)
+    cached_available: Mapped[bool | None] = mapped_column(Boolean)
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
         server_default=text("''::tsvector"),

@@ -2,19 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import homeContent from './homeContent.json'
 
 const asset = (name: string) => `/reference/${name}`
-const money = (amount: number) => `${new Intl.NumberFormat('ru-RU').format(amount)} ₸`
+const money = (amount: number | null) => amount === null ? 'Цена не предоставлена' : `${new Intl.NumberFormat('ru-RU').format(amount)} ₸`
 
-type Product = {
-  id: string
-  name: string
-  sku: string
-  category: string
-  price: number
-  stock: number
-  unit: string
-  specs: string[]
-  art: 'cable' | 'breaker' | 'lamp' | 'tray'
-}
+import type { Product } from './api'
 
 type IconName = 'pin' | 'search' | 'menu' | 'compare' | 'heart' | 'cart' | 'chevron' | 'phone' | 'spark' | 'close' | 'arrow' | 'camera'
 
@@ -86,7 +76,7 @@ const catalogSpecials = [...specials, ['260kh448-unit.jpg', 'Изделия дл
 
 type HeaderProps = {
   query: string
-  cartCount: number
+  cartCount: number | null
   onQuery: (value: string) => void
   onHome: () => void
   onCatalog: () => void
@@ -112,7 +102,7 @@ export function SiteHeader({ query, cartCount, onQuery, onHome, onCatalog, onCat
       <button className="ekt-logo" onClick={onHome} aria-label="Электрокомплект — на главную"><img src={asset('logo.svg')} alt="Группа компаний Электрокомплект" /></button>
       <button className="ekt-catalog-button" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}>Каталог <img src={asset('catalog.svg')} alt="" /></button>
       {search}
-      <div className="ekt-header-actions"><a href="https://nursultan.ekt.kz/catalog/compare/"><Icon name="compare" /><span>Сравнить</span></a><a href="https://nursultan.ekt.kz/personal/favorite/"><Icon name="heart" /><span>Избранное</span></a><button onClick={onCart} aria-label={`Корзина, позиций ${cartCount}`}><img src={asset('cart.svg')} alt="" /><span>Корзина</span><b>{cartCount}</b></button></div>
+      <div className="ekt-header-actions"><a href="https://nursultan.ekt.kz/catalog/compare/"><Icon name="compare" /><span>Сравнить</span></a><a href="https://nursultan.ekt.kz/personal/favorite/"><Icon name="heart" /><span>Избранное</span></a><button onClick={onCart} aria-label={cartCount === null ? 'Корзина сервера' : `Корзина, позиций ${cartCount}`}><img src={asset('cart.svg')} alt="" /><span>Корзина</span>{cartCount !== null && <b>{cartCount}</b>}</button></div>
     </div></div>
     {menuOpen && <div className="ekt-catalog-menu"><div className="ekt-container"><div className="ekt-menu-title"><button onClick={() => { onCatalog(); setMenuOpen(false) }}><strong>Каталог продукции</strong></button><button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню"><Icon name="close" /></button></div><div className="ekt-menu-grid">{categories.map(([name, picture]) => <button key={name} onClick={() => { onCategory(name); setMenuOpen(false) }}><img src={asset(picture)} alt="" />{name}</button>)}</div></div></div>}
     {cityOpen && <div className="ekt-city-popover"><strong>Ваш город Астана?</strong><div><button onClick={() => setCityOpen(false)}>Да</button><button onClick={() => setCityOpen(false)}>Закрыть</button></div><small>В демонстрации доступны данные для Астаны.</small></div>}
@@ -120,13 +110,13 @@ export function SiteHeader({ query, cartCount, onQuery, onHome, onCatalog, onCat
 }
 
 export function MobileNavigation({ cartCount, route, onHome, onCatalog, onCart }: {
-  cartCount: number; route: string; onHome: () => void; onCatalog: () => void; onCart: () => void
+  cartCount: number | null; route: string; onHome: () => void; onCatalog: () => void; onCart: () => void
 }) {
   return <nav className="ekt-mobile-navigation" aria-label="Основная навигация">
     <button onClick={onHome} aria-current={route === 'home' ? 'page' : undefined}><img src={asset('mobile/icon_home.svg')} alt="" /><span>Главная</span></button>
     <button onClick={onCatalog} aria-current={route === 'catalog' || route === 'products' ? 'page' : undefined}><img src={asset('mobile/icon_catalog.svg')} alt="" /><span>Каталог</span></button>
     <a href="https://pro.ekt.kz/"><img src={asset('mobile/icon_ekt_pro.svg')} alt="" /><span>EKT Pro</span></a>
-    <button onClick={onCart} aria-current={route === 'cart' ? 'page' : undefined}><span className="ekt-nav-cart"><img src={asset('mobile/icon_cart.svg')} alt="" /><b>{cartCount}</b></span><span>Корзина</span></button>
+    <button onClick={onCart} aria-current={route === 'cart' ? 'page' : undefined}><span className="ekt-nav-cart"><img src={asset('mobile/icon_cart.svg')} alt="" />{cartCount !== null && <b>{cartCount}</b>}</span><span>Корзина</span></button>
     <a href="https://nursultan.ekt.kz/personal/"><img src={asset('mobile/icon_user.svg')} alt="" /><span>Личный кабинет</span></a>
   </nav>
 }
@@ -219,8 +209,10 @@ const productPictures: Record<Product['art'], string> = {
   tray: '5088ce720b5610802ae30a5bd4ae2365.png',
 }
 
-export function CatalogPage({ products, category, query, inStock, onCategory, onStock, onReset, onHome, onAsk, onProduct }: {
+export function CatalogPage({ products, status, remote, category, query, inStock, onCategory, onStock, onReset, onHome, onAsk, onProduct }: {
   products: Product[]
+  status: string
+  remote: boolean
   category: string
   query: string
   inStock: boolean
@@ -231,8 +223,8 @@ export function CatalogPage({ products, category, query, inStock, onCategory, on
   onAsk: () => void
   onProduct: (product: Product, action: 'info' | 'add') => void
 }) {
-  const filtered = products.filter(product => (category === 'Все товары' || product.category === category) && (!inStock || product.stock > 0) && (!query || `${product.name} ${product.sku}`.toLowerCase().includes(query.toLowerCase())))
-  return <main className="ekt-catalog-page ekt-container"><h1>{category === 'Все товары' ? 'Каталог продукции' : category}</h1><nav className="ekt-crumbs"><a href="/" onClick={event => { event.preventDefault(); onHome() }}>Главная</a><span>›</span><span>Каталог</span>{category !== 'Все товары' && <><span>›</span><span>{category}</span></>}</nav><div className="ekt-catalog-layout"><aside className="ekt-filter"><h2>Фильтр по параметрам</h2><label><span>В наличии</span><input type="checkbox" checked={inStock} onChange={event => onStock(event.target.checked)} /></label><div className="ekt-filter-heading">Категория</div>{['Все товары', ...categories.map(([name]) => name)].map(name => <button key={name} className={name === category ? 'selected' : ''} onClick={() => onCategory(name)}>{name}<Icon name="chevron" size={14} /></button>)}<div className="ekt-filter-actions"><button onClick={onReset}>Сбросить</button></div></aside><div className="ekt-catalog-content"><div className="ekt-catalog-info"><span>Показано товаров: {filtered.length}</span><span>Цены и остатки — демонстрационные</span></div><div className="ekt-catalog-sort"><span>Сортировать⌄</span><button aria-label="Сетка" className="selected">▦</button><button aria-label="Список">☷</button></div><div className="ekt-products">{filtered.map(product => <article key={product.id}><button className="ekt-product-image" onClick={() => onProduct(product, 'info')}><img src={asset(productPictures[product.art])} alt="" /></button><button className="ekt-product-name" onClick={() => onProduct(product, 'info')}>{product.name}</button><div className="ekt-product-price"><small>цена</small><strong>{money(product.price)}</strong></div><div className="ekt-product-meta">Код товара {product.sku}<br />{product.stock ? `В наличии: ${product.stock} ${product.unit}` : 'Нет в наличии'}</div><button className="ekt-buy" onClick={() => onProduct(product, product.stock ? 'add' : 'info')}><Icon name={product.stock ? 'cart' : 'spark'} size={17} /> {product.stock ? 'Купить' : 'Подобрать аналог'}</button></article>)}{!filtered.length && <div className="ekt-no-products"><h3>Товары не найдены</h3><p>Демонстрационный каталог содержит несколько позиций. Спросите ассистента или измените фильтр.</p><button onClick={onAsk}>Спросить ассистента</button></div>}</div></div></div></main>
+  const filtered = products.filter(product => (category === 'Все товары' || product.category === category) && (!inStock || (product.stock ?? 0) > 0) && (!query || `${product.name} ${product.sku}`.toLowerCase().includes(query.toLowerCase())))
+  return <main className="ekt-catalog-page ekt-container"><h1>{category === 'Все товары' ? 'Каталог продукции' : category}</h1><nav className="ekt-crumbs"><a href="/" onClick={event => { event.preventDefault(); onHome() }}>Главная</a><span>›</span><span>Каталог</span>{category !== 'Все товары' && <><span>›</span><span>{category}</span></>}</nav><div className="ekt-catalog-layout"><aside className="ekt-filter"><h2>Фильтр по параметрам</h2><label><span>В наличии</span><input type="checkbox" checked={inStock} onChange={event => onStock(event.target.checked)} /></label><div className="ekt-filter-heading">Категория</div>{['Все товары', ...new Set([...categories.map(([name]) => name), ...products.map(product => product.category)])].map(name => <button key={name} className={name === category ? 'selected' : ''} onClick={() => onCategory(name)}>{name}<Icon name="chevron" size={14} /></button>)}<div className="ekt-filter-actions"><button onClick={onReset}>Сбросить</button></div></aside><div className="ekt-catalog-content"><div className="ekt-catalog-info"><span>Показано товаров: {filtered.length}</span><span>{remote ? 'Каталог сервера · прототип, возможны демоданные' : 'Цены и остатки — демонстрационные'}</span></div><div className="ekt-catalog-sort"><span>Сортировать⌄</span><button aria-label="Сетка" className="selected">▦</button><button aria-label="Список">☷</button></div><div role="status">{status}</div><div className="ekt-products">{filtered.map(product => <article key={product.id}><button className="ekt-product-image" onClick={() => onProduct(product, 'info')}><img src={asset(productPictures[product.art])} alt="" /></button><button className="ekt-product-name" onClick={() => onProduct(product, 'info')}>{product.name}</button><div className="ekt-product-price"><small>цена</small><strong>{money(product.price)}</strong></div><div className="ekt-product-meta">Код товара {product.sku}<br />{product.stock === null ? 'Наличие не подтверждено' : product.stock ? `В наличии: ${product.stock} ${product.unit}` : 'Нет в наличии'}</div><button className="ekt-buy" onClick={() => onProduct(product, product.stock ? 'add' : 'info')}><Icon name={product.stock ? 'cart' : 'spark'} size={17} /> {product.stock ? 'Купить' : remote ? 'Подробнее' : 'Подобрать аналог'}</button></article>)}{!filtered.length && !status && <div className="ekt-no-products"><h3>Товары не найдены</h3><p>Спросите ассистента или измените фильтр. Прототип показывает ограниченную выборку каталога.</p><button onClick={onAsk}>Спросить ассистента</button></div>}</div></div></div></main>
 }
 
 export function CartPage({ products, cart, remote, onRemove, onCatalog, onAsk }: {
@@ -244,7 +236,7 @@ export function CartPage({ products, cart, remote, onRemove, onCatalog, onAsk }:
   onAsk: () => void
 }) {
   const items = products.filter(product => cart[product.id])
-  return <main className="ekt-container ekt-cart-page"><h1>Корзина</h1><div className="ekt-crumbs">Главная <span>›</span> Корзина</div>{remote ? <div className="ekt-cart-empty"><h2>Корзина сервера</h2><p>Ссылка на неё появится после подтверждения товара в чате.</p><button onClick={onAsk}>Открыть ассистента</button></div> : items.length ? <div className="ekt-cart-layout"><div>{items.map(product => <article key={product.id} className="ekt-cart-item"><img src={asset(productPictures[product.art])} alt="" /><div><strong>{product.name}</strong><small>Код товара {product.sku}</small><span>{cart[product.id]} {product.unit} × {money(product.price)}</span><button onClick={() => onRemove(product.id)}>Удалить</button></div><b>{money(cart[product.id] * product.price)}</b></article>)}</div><aside><h2>Ваш заказ</h2><p>Позиций <b>{items.length}</b></p><p>Итого <b>{money(items.reduce((sum, product) => sum + cart[product.id] * product.price, 0))}</b></p><small>Корзина прототипа не связана с ekt.kz. Оформление заказа отключено.</small><button onClick={onCatalog}>Продолжить выбор</button></aside></div> : <div className="ekt-cart-empty"><Icon name="cart" size={132} /><h2>Ваша корзина пуста</h2><p><button className="ekt-cart-return" onClick={onCatalog}>Нажмите здесь</button>, чтобы продолжить покупки.</p></div>}</main>
+  return <main className="ekt-container ekt-cart-page"><h1>Корзина</h1><div className="ekt-crumbs">Главная <span>›</span> Корзина</div>{remote ? <div className="ekt-cart-empty"><h2>Корзина EKT не подключена</h2><p>В этой версии бэкенда нет действующего подключения к корзине ekt.kz. Товары не добавляются и заказ не оформляется.</p><button onClick={onAsk}>Открыть ассистента</button></div> : items.length ? <div className="ekt-cart-layout"><div>{items.map(product => <article key={product.id} className="ekt-cart-item"><img src={asset(productPictures[product.art])} alt="" /><div><strong>{product.name}</strong><small>Код товара {product.sku}</small><span>{cart[product.id]} {product.unit} × {money(product.price)}</span><button onClick={() => onRemove(product.id)}>Удалить</button></div><b>{money(cart[product.id] * (product.price ?? 0))}</b></article>)}</div><aside><h2>Ваш заказ</h2><p>Позиций <b>{items.length}</b></p><p>Итого <b>{money(items.reduce((sum, product) => sum + cart[product.id] * (product.price ?? 0), 0))}</b></p><small>Корзина прототипа не связана с ekt.kz. Оформление заказа отключено.</small><button onClick={onCatalog}>Продолжить выбор</button></aside></div> : <div className="ekt-cart-empty"><Icon name="cart" size={132} /><h2>Ваша корзина пуста</h2><p><button className="ekt-cart-return" onClick={onCatalog}>Нажмите здесь</button>, чтобы продолжить покупки.</p></div>}</main>
 }
 
 const regionSite = 'https://nursultan.ekt.kz'

@@ -1,2 +1,7 @@
+"""EKT consultant; importing this package does not read secrets or call APIs."""
+
+
 def main() -> None:
-    print("Hello from hack-4cfe9779-k14!")
+    from .cli import main as run
+
+    run()

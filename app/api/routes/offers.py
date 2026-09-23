@@ -1,0 +1,48 @@
+import re
+from collections.abc import AsyncGenerator
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config.database import get_db
+from app.integrations.cart_gateway import UnavailableCartGateway
+from app.integrations.ekt_client import EktConnectionError
+from app.repositories.offers import OfferRepository
+from app.schemas.offers import ConfirmOfferResult, CreateOfferRequest, PendingOfferView
+from app.services.offers import OfferService
+
+router = APIRouter(prefix="/api/chat/sessions/{session_id}/offers", tags=["offers"])
+
+
+class UnavailableEktClient:
+    async def get_current_product_by_article(self, article: str):
+        del article
+        raise EktConnectionError("EKT client is not configured")
+
+
+async def get_offer_service(session: AsyncSession = Depends(get_db)) -> AsyncGenerator[OfferService, None]:
+    # A real EKT mapper and cart gateway must be injected after partner API
+    # documentation is available. These safe placeholders never write a cart.
+    yield OfferService(OfferRepository(session), UnavailableEktClient(), UnavailableCartGateway())
+
+
+Offer = Annotated[OfferService, Depends(get_offer_service)]
+
+
+@router.post("", response_model=PendingOfferView, status_code=status.HTTP_201_CREATED)
+async def create_offer(session_id: UUID, payload: CreateOfferRequest, service: Offer) -> PendingOfferView:
+    return await service.create_offer(session_id, payload)
+
+
+@router.post("/{offer_id}/confirm", response_model=ConfirmOfferResult)
+async def confirm_offer(
+    session_id: UUID,
+    offer_id: UUID,
+    service: Offer,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
+) -> ConfirmOfferResult:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", idempotency_key):
+        raise HTTPException(status_code=400, detail="Invalid Idempotency-Key")
+    return await service.confirm_offer(session_id, offer_id, idempotency_key)

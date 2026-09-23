@@ -1,0 +1,59 @@
+{
+  "dataset": "mock/demo data",
+  "source": "synthetic — not ekt.kz data and not a current availability source",
+  "products": [
+    {
+      "article": "DEMO-CABLE-VVG-3X2-5",
+      "external_id": "demo-001",
+      "name": "Кабель ВВГнг-LS 3x2,5",
+      "category": "Кабель и провод",
+      "brand": "DemoCable",
+      "characteristics": {"cores": 3, "cross_section_mm2": 2.5, "material": "медь"},
+      "cached_price": "1250.00",
+      "cached_stock_by_location": {"Алматы": 120, "Астана": 45},
+      "cached_available": true,
+      "certificates": [{"type": "соответствие", "number": "DEMO-CERT-001"}],
+      "source_fields": {"data_origin": "mock/demo", "supplier_label": "Демонстрационный поставщик"}
+    },
+    {
+      "article": "DEMO-CABLE-VVG-3X1-5",
+      "external_id": "demo-002",
+      "name": "Кабель ВВГнг-LS 3x1,5",
+      "category": "Кабель и провод",
+      "brand": "DemoCable",
+      "characteristics": {"cores": 3, "cross_section_mm2": 1.5, "material": "медь"},
+      "cached_price": "890.00",
+      "cached_stock_by_location": {"Алматы": 0},
+      "cached_available": false,
+      "certificates": [],
+      "source_fields": {"data_origin": "mock/demo"}
+    },
+    {
+      "article": "DEMO-CABLE-VVG-2X2-5",
+      "external_id": "demo-003",
+      "name": "Кабель ВВГнг-LS 2x2,5",
+      "category": "Кабель и провод",
+      "brand": "DemoCable",
+      "characteristics": {"cores": 2, "cross_section_mm2": 2.5, "material": "медь"},
+      "cached_price": "970.00",
+      "cached_stock_by_location": {"Караганда": 15},
+      "cached_available": true,
+      "certificates": null,
+      "source_fields": {"data_origin": "mock/demo", "certificate_note": "not provided by synthetic source"}
+    },
+    {
+      "article": "DEMO-CABLE-AL-3X2-5",
+      "external_id": "demo-004",
+      "name": "Кабель АВВГ 3x2,5",
+      "category": "Кабель и провод",
+      "brand": "DemoCable",
+      "characteristics": {"cores": 3, "cross_section_mm2": 2.5, "material": "алюминий"},
+      "cached_price": null,
+      "cached_stock_by_location": null,
+      "cached_available": null,
+      "certificates": [],
+      "source_fields": {"data_origin": "mock/demo", "availability_note": "not provided"}
+    }
+  ],
+  "unknown_sku_examples": ["DEMO-UNKNOWN-404"]
+}

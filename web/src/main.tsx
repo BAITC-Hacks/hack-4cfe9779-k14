@@ -5,19 +5,7 @@ import './styles.css'
 import './site.css'
 import { CartPage, CatalogLandingPage, CatalogPage, HomePage, MobileNavigation, SiteFooter, SiteHeader } from './Site'
 
-type Product = {
-  id: string
-  name: string
-  sku: string
-  category: string
-  price: number
-  stock: number
-  unit: string
-  specs: string[]
-  art: 'cable' | 'breaker' | 'lamp' | 'tray'
-  certificateUrl?: string
-  analogId?: string
-}
+import { apiEnabled, confirmOffer, createOffer, freshProduct, history, searchCatalog, sendMessage, uploadAttachment, type Product } from './api'
 
 type Proposal = {
   key: string
@@ -27,6 +15,8 @@ type Proposal = {
   unit: string
   quantity: number
   maxAvailable?: number
+  price?: number
+  expiresAt?: string
 }
 
 type ChatMessage = {
@@ -35,14 +25,6 @@ type ChatMessage = {
   cards?: Product[]
   proposalKey?: string
   cartUrl?: string
-}
-
-type ApiReply = {
-  reply: string
-  products?: Product[]
-  proposal?: { id: string; product_id: string; name: string; unit: string; quantity: number; available?: number }
-  cart_url?: string
-  cart_count?: number
 }
 
 const products: Product[] = [
@@ -93,8 +75,7 @@ const products: Product[] = [
   },
 ]
 
-const apiBase = (import.meta.env.VITE_ASSISTANT_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
-const price = (value: number) => new Intl.NumberFormat('ru-RU').format(value) + ' ₸'
+const price = (value: number | null) => value === null ? 'Цена не предоставлена' : new Intl.NumberFormat('ru-RU').format(value) + ' ₸'
 const safeCartUrl = (value?: string) => {
   if (!value) return undefined
   try {
@@ -163,7 +144,6 @@ function App() {
   const [category, setCategory] = useState('Все товары')
   const [inStock, setInStock] = useState(false)
   const [cart, setCart] = useState<Record<string, number>>(readCart)
-  const [remoteCartCount, setRemoteCartCount] = useState(0)
   const [remoteCartUrl, setRemoteCartUrl] = useState<string | undefined>()
   const [chatOpen, setChatOpen] = useState(false)
   const [input, setInput] = useState('')
@@ -171,6 +151,10 @@ function App() {
   const [activeId, setActiveId] = useState<string | undefined>()
   const [pending, setPending] = useState<Proposal | undefined>()
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'assistant', text: 'Здравствуйте! Помогу подобрать товар, проверить наличие и найти аналог. Что вас интересует?' }])
+  const [catalog, setCatalog] = useState<Product[]>(apiEnabled ? [] : products)
+  const [catalogStatus, setCatalogStatus] = useState('')
+  const [connection, setConnection] = useState(apiEnabled ? 'Подключение…' : 'Локальное демо')
+  const actionRef = useRef(false)
   const endRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -179,7 +163,33 @@ function App() {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
-  useEffect(() => { localStorage.setItem('ekt-demo-cart', JSON.stringify(cart)) }, [cart])
+  useEffect(() => {
+    if (!apiEnabled) return
+    let cancelled = false
+    actionRef.current = true
+    setBusy(true)
+    history().then(data => {
+      if (cancelled) return
+      if (data.messages.length) setMessages(data.messages.map(message => ({ role: message.role, text: message.content })))
+      setConnection('FastAPI · прототип')
+    }).catch(error => {
+      if (!cancelled) { setConnection('Нет связи с сервером'); setMessages(current => [...current, { role: 'assistant', text: error.message }]) }
+    }).finally(() => { if (!cancelled) { actionRef.current = false; setBusy(false) } })
+    return () => { cancelled = true }
+  }, [])
+  useEffect(() => {
+    if (!apiEnabled) return
+    const controller = new AbortController()
+    setCatalogStatus('Загрузка каталога сервера…')
+    setCatalog([])
+    const timer = window.setTimeout(() => {
+      searchCatalog(query, controller.signal).then(items => {
+        if (!controller.signal.aborted) { setCatalog(items); setCatalogStatus('') }
+      }).catch(error => { if (!controller.signal.aborted) setCatalogStatus(error.message) })
+    }, 250)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [query])
+  useEffect(() => { if (!apiEnabled) localStorage.setItem('ekt-demo-cart', JSON.stringify(cart)) }, [cart])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, pending, chatOpen])
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setChatOpen(false) }
@@ -187,10 +197,10 @@ function App() {
     return () => window.removeEventListener('keydown', onEscape)
   }, [])
 
-  const cartCount = apiBase ? remoteCartCount : Object.values(cart).filter(Boolean).length
+  const cartCount = apiEnabled ? null : Object.values(cart).filter(Boolean).length
   const append = (...items: ChatMessage[]) => setMessages(current => [...current, ...items])
   const makeProposal = (product: Product, quantity: number) => {
-    const available = product.stock - (cart[product.id] || 0)
+    const available = (product.stock ?? 0) - (cart[product.id] || 0)
     if (available <= 0) {
       append({ role: 'assistant', text: `Товара «${product.name}» сейчас нет в наличии${product.analogId ? '. Могу предложить аналог.' : '.'}`, cards: product.analogId ? [products.find(p => p.id === product.analogId)!] : undefined })
       return
@@ -208,8 +218,9 @@ function App() {
   const openForProduct = (product: Product, action: 'info' | 'add' = 'info') => {
     setChatOpen(true)
     setActiveId(product.id)
-    if (apiBase) {
-      void send(action === 'add' ? `Добавить товар с артикулом ${product.sku} в корзину` : `Расскажи про товар с артикулом ${product.sku}`)
+    if (apiEnabled) {
+      if (action === 'add') void proposeRemote(product, 1)
+      else void send(`Расскажи про товар с артикулом ${product.sku}`)
       return
     }
     append({ role: 'user', text: action === 'add' ? `Добавить ${product.name}` : `Расскажи про ${product.name}` })
@@ -217,23 +228,46 @@ function App() {
     else append({ role: 'assistant', text: product.stock ? `В наличии ${product.stock} ${product.unit}. ${product.specs.join('; ')}. Данные и цена в этой витрине демонстрационные.` : `Сейчас нет в наличии. ${product.specs.join('; ')}. Могу показать аналог.`, cards: [product] })
   }
 
+  const offerProposal = async (product: Product, quantity: number) => {
+    const offer = await createOffer(product, quantity)
+    const proposal = { key: crypto.randomUUID(), id: offer.offer_id, productId: product.id, name: product.name, unit: product.unit, quantity: offer.quantity, price: Number(offer.price_at_offer), expiresAt: offer.expires_at }
+    setPending(proposal)
+    append({ role: 'assistant', text: 'Проверьте товар, цену и количество. Для добавления нажмите «Да, добавить».', proposalKey: proposal.key })
+  }
+
+  const proposeRemote = async (product: Product, quantity: number) => {
+    if (actionRef.current) return
+    actionRef.current = true
+    setBusy(true)
+    setPending(undefined)
+    append({ role: 'user', text: `Добавить ${quantity} ${product.unit} «${product.name}»` })
+    try { await offerProposal(product, quantity) }
+    catch (error) { append({ role: 'assistant', text: error instanceof Error ? error.message : 'Не удалось создать предложение.' }) }
+    finally { actionRef.current = false; setBusy(false) }
+  }
+
   const confirm = async () => {
-    if (!pending || busy) return
+    if (!pending || actionRef.current) return
+    actionRef.current = true
     setBusy(true)
     try {
-      if (apiBase) {
+      if (apiEnabled) {
         if (!pending.id) throw new Error('Сервер не передал идентификатор предложения')
-        const response = await fetch(`${apiBase}/assistant/proposals/${encodeURIComponent(pending.id)}/confirm`, { method: 'POST', credentials: 'include' })
-        if (!response.ok) throw new Error('Не удалось подтвердить добавление')
-        const data: ApiReply = await response.json()
-        const cartUrl = safeCartUrl(data.cart_url)
-        append({ role: 'assistant', text: data.reply, cartUrl })
-        if (typeof data.cart_count === 'number') setRemoteCartCount(data.cart_count)
+        const data = await confirmOffer(pending.id, pending.key)
+        if (data.outcome === 'price_changed') {
+          const replacement = { ...pending, id: data.offer.offer_id, key: crypto.randomUUID(), quantity: data.offer.quantity, price: Number(data.offer.price_at_offer), expiresAt: data.offer.expires_at }
+          setPending(replacement)
+          append({ role: 'assistant', text: 'Цена изменилась. Проверьте новое предложение и подтвердите его отдельно.', proposalKey: replacement.key })
+          return
+        }
+        const confirmed = data.outcome === 'confirmed' || data.outcome === 'already_confirmed'
+        const cartUrl = confirmed ? safeCartUrl(data.cart_url || undefined) : undefined
+        append({ role: 'assistant', text: confirmed ? 'Сервер подтвердил добавление товара.' : `Товар не добавлен. ${data.message}`, cartUrl })
         if (cartUrl) setRemoteCartUrl(cartUrl)
       } else {
         const product = products.find(p => p.id === pending.productId)
         if (!product) throw new Error('Товар не найден')
-        const available = product.stock - (cart[product.id] || 0)
+        const available = (product.stock ?? 0) - (cart[product.id] || 0)
         if (pending.quantity > available) {
           append({ role: 'assistant', text: `Остаток изменился: доступно ${Math.max(0, available)} ${product.unit}. Составьте предложение заново.` })
         } else {
@@ -245,32 +279,28 @@ function App() {
     } catch (error) {
       append({ role: 'assistant', text: error instanceof Error ? error.message : 'Не удалось изменить корзину. Попробуйте ещё раз.' })
     } finally {
+      actionRef.current = false
       setBusy(false)
     }
   }
 
   const send = async (raw = input, attachmentIds?: string[]) => {
     const text = raw.trim()
-    if ((!text && !attachmentIds?.length) || busy) return
+    if ((!text && !attachmentIds?.length) || actionRef.current) return
     setInput('')
     append({ role: 'user', text: text || 'Отправлено вложение' })
-    if (/^(да|подтверждаю|да,? добавь)/i.test(text) && pending) { await confirm(); return }
+    if (!apiEnabled && /^(да|подтверждаю|да,? добавь)[.!]?$/i.test(text) && pending) { await confirm(); return }
+    actionRef.current = true
     setBusy(true)
+    setPending(undefined)
     try {
-      if (apiBase) {
-        const response = await fetch(`${apiBase}/assistant/messages`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, attachment_ids: attachmentIds || [] }),
-        })
-        if (!response.ok) throw new Error('Не удалось получить ответ ассистента')
-        const data: ApiReply = await response.json()
-        const proposal = data.proposal && { key: crypto.randomUUID(), id: data.proposal.id, productId: data.proposal.product_id, name: data.proposal.name, unit: data.proposal.unit, quantity: data.proposal.quantity, maxAvailable: data.proposal.available }
-        if (proposal) setPending(proposal)
-        const cartUrl = safeCartUrl(data.cart_url)
-        append({ role: 'assistant', text: data.reply, cards: data.products, proposalKey: proposal?.key, cartUrl })
-        if (cartUrl) setRemoteCartUrl(cartUrl)
+      if (apiEnabled) {
+        const data = await sendMessage(text, attachmentIds)
+        setConnection('FastAPI · прототип')
+        append({ role: 'assistant', text: data.text, cards: data.cards })
+        if (data.analysis.intent === 'add_to_cart_request' && data.analysis.article && data.analysis.quantity) {
+          await offerProposal(await freshProduct(data.analysis.article), data.analysis.quantity)
+        }
         return
       }
       const lower = text.toLowerCase().replaceAll('ё', 'е')
@@ -298,30 +328,33 @@ function App() {
     } catch (error) {
       append({ role: 'assistant', text: error instanceof Error ? error.message : 'Сервис временно недоступен.' })
     } finally {
+      actionRef.current = false
       setBusy(false)
     }
   }
 
   const upload = async (file?: File) => {
-    if (!file || busy) return
+    if (!file || actionRef.current) return
     if (file.size > 10 * 1024 * 1024) { append({ role: 'assistant', text: 'Файл слишком большой. Выберите файл до 10 МБ.' }); return }
-    const allowed = /\.(pdf|docx?|xlsx?|jpe?g)$/i.test(file.name)
-    if (!allowed) { append({ role: 'assistant', text: 'Поддерживаются PDF, Word, Excel и JPEG.' }); return }
-    if (!apiBase) {
+    const allowed = /\.(pdf|docx|xlsx|jpe?g|png)$/i.test(file.name)
+    if (!allowed) { append({ role: 'assistant', text: 'Поддерживаются PDF, DOCX, XLSX, JPEG и PNG.' }); return }
+    if (!apiEnabled) {
       append({ role: 'user', text: `📎 ${file.name}` }, { role: 'assistant', text: 'Файл выбран. Распознавание документов появится после подключения Python-бэкенда. Пока попробуйте написать артикул или название текстом.' })
       return
     }
+    actionRef.current = true
     setBusy(true)
+    setPending(undefined)
+    append({ role: 'user', text: `📎 ${file.name}` })
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const response = await fetch(`${apiBase}/assistant/attachments`, { method: 'POST', credentials: 'include', body: form })
-      if (!response.ok) throw new Error('Не удалось загрузить файл')
-      const data: { id: string } = await response.json()
-      setBusy(false)
-      await send(`Найди товары из файла «${file.name}»`, [data.id])
+      const attachment = await uploadAttachment(file)
+      const data = await sendMessage(`Найди товары из файла «${file.name}»`, [attachment.id])
+      setConnection('FastAPI · прототип')
+      append({ role: 'assistant', text: data.text, cards: data.cards })
     } catch (error) {
       append({ role: 'assistant', text: error instanceof Error ? error.message : 'Не удалось обработать файл.' })
+    } finally {
+      actionRef.current = false
       setBusy(false)
     }
   }
@@ -349,7 +382,9 @@ function App() {
       onHome={() => navigate('home')}
       onCategory={name => { setCategory(name); setQuery(''); navigate('products') }}
     /> : route === 'products' ? <CatalogPage
-      products={products}
+      products={catalog}
+      status={catalogStatus}
+      remote={apiEnabled}
       category={category}
       query={query}
       inStock={inStock}
@@ -362,7 +397,7 @@ function App() {
     /> : <CartPage
       products={products}
       cart={cart}
-      remote={!!apiBase}
+      remote={!!apiEnabled}
       onRemove={id => setCart(current => { const next = { ...current }; delete next[id]; return next })}
       onCatalog={() => navigate('catalog')}
       onAsk={() => { navigate('catalog'); setChatOpen(true) }}
@@ -371,7 +406,7 @@ function App() {
     <MobileNavigation route={route} cartCount={cartCount} onHome={() => navigate('home')} onCatalog={() => navigate('catalog')} onCart={() => remoteCartUrl ? window.location.assign(remoteCartUrl) : navigate('cart')} />
 
     {!chatOpen && <button className="chat-launcher" onClick={() => setChatOpen(true)} aria-label="Открыть ИИ-ассистента"><Icon name="spark" size={26} /><span>Спросить ассистента</span><span className="launcher-pulse" /></button>}
-    {chatOpen && <section className="chat-panel" role="dialog" aria-label="ИИ-ассистент"><div className="chat-header"><div className="chat-avatar"><Icon name="spark" size={22} /></div><div><strong>ИИ-ассистент EKT</strong><span><i /> {apiBase ? 'Подключён к серверу' : 'Демо-режим'}</span></div><button onClick={() => setChatOpen(false)} aria-label="Закрыть чат"><Icon name="close" size={21} /></button></div><div className="chat-messages" aria-live="polite"><div className="chat-today">Сегодня · консультация по товарам</div>{messages.map((message, index) => <div className={`chat-message chat-message--${message.role}`} key={index}>{message.role === 'assistant' && <div className="message-avatar"><Icon name="spark" size={14} /></div>}<div className="message-content"><div className="message-bubble">{message.text}</div>{message.cards?.map(product => <div className="chat-product" key={product.id}><ProductArt kind={product.art || 'cable'} compact /><div><b>{product.name}</b><span>Код {product.sku} · {product.stock ? `${product.stock} ${product.unit} в наличии` : 'нет в наличии'}</span><button onClick={() => openForProduct(product, product.stock ? 'add' : 'info')}>{product.stock ? 'Добавить' : 'Подробнее'} →</button></div></div>)}{pending && message.proposalKey === pending.key && <div className="proposal-card"><b>Подтвердить добавление</b><span>{pending.name}</span><label>Количество {apiBase ? <strong>{pending.quantity} {pending.unit}</strong> : <><input type="number" min="1" max={pending.maxAvailable} value={pending.quantity} onChange={event => setPending(current => current && ({ ...current, quantity: Math.max(1, Math.min(current.maxAvailable || 999999, Number(event.target.value) || 1)) }))} /> {pending.unit}</>}</label><div><button className="confirm-button" disabled={busy} onClick={confirm}><Icon name="check" size={17} /> Да, добавить</button><button className="cancel-button" onClick={() => { setPending(undefined); append({ role: 'assistant', text: 'Добавление отменено. Корзина не изменилась.' }) }}>Отмена</button></div></div>}{message.cartUrl && <a className="cart-link" href={message.cartUrl} onClick={event => { if (message.cartUrl === '#cart') { event.preventDefault(); navigate('cart'); setChatOpen(false) } }}>{message.cartUrl.includes('checkout-delivery') ? 'Условия на ekt.kz' : 'Открыть корзину'} <Icon name="arrow" size={16} /></a>}</div></div>)}{busy && <div className="typing"><span /><span /><span /></div>}<div ref={endRef} /></div><div className="quick-prompts"><button onClick={() => send('Есть кабель ВВГ 3×2,5?')}>Проверить наличие</button><button onClick={() => send('Подбери аналог кабеля ВВГ')}>Подобрать аналог</button><button onClick={() => send('Какие условия доставки и оплаты?')}>Доставка и оплата</button></div><form className="chat-composer" onSubmit={event => { event.preventDefault(); void send() }}><input ref={fileRef} className="visually-hidden" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg" onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /><button type="button" className="attach-button" onClick={() => fileRef.current?.click()} aria-label="Прикрепить файл"><Icon name="clip" size={21} /></button><input value={input} onChange={event => setInput(event.target.value)} placeholder="Напишите вопрос о товаре…" aria-label="Сообщение ассистенту" /><button type="submit" className="send-button" disabled={busy || !input.trim()} aria-label="Отправить сообщение"><Icon name="send" size={19} /></button></form><div className="chat-disclaimer">Ассистент может ошибаться. Проверяйте характеристики перед покупкой.</div></section>}
+    {chatOpen && <section className="chat-panel" role="dialog" aria-label="ИИ-ассистент"><div className="chat-header"><div className="chat-avatar"><Icon name="spark" size={22} /></div><div><strong>ИИ-ассистент EKT</strong><span><i /> {connection}</span></div><button onClick={() => setChatOpen(false)} aria-label="Закрыть чат"><Icon name="close" size={21} /></button></div><div className="chat-messages" aria-live="polite"><div className="chat-today">Сегодня · консультация по товарам</div>{messages.map((message, index) => <div className={`chat-message chat-message--${message.role}`} key={index}>{message.role === 'assistant' && <div className="message-avatar"><Icon name="spark" size={14} /></div>}<div className="message-content"><div className="message-bubble">{message.text}</div>{message.cards?.map(product => <div className="chat-product" key={product.id}><ProductArt kind={product.art || 'cable'} compact /><div><b>{product.name}</b><span>Код {product.sku} · {product.stock === null ? 'наличие не подтверждено' : product.stock ? `${product.stock} ${product.unit} в наличии` : 'нет в наличии'}</span><button onClick={() => openForProduct(product, product.stock ? 'add' : 'info')}>{product.stock ? 'Добавить' : 'Подробнее'} →</button></div></div>)}{pending && message.proposalKey === pending.key && <div className="proposal-card"><b>Подтвердить добавление</b><span>{pending.name}</span>{pending.price !== undefined && <span>Цена: {price(pending.price)}</span>}{pending.expiresAt && <span>Действует до {new Date(pending.expiresAt).toLocaleTimeString()}</span>}<label>Количество {apiEnabled ? <strong>{pending.quantity} {pending.unit}</strong> : <><input type="number" min="1" max={pending.maxAvailable} value={pending.quantity} onChange={event => setPending(current => current && ({ ...current, quantity: Math.max(1, Math.min(current.maxAvailable || 999999, Number(event.target.value) || 1)) }))} /> {pending.unit}</>}</label><div><button className="confirm-button" disabled={busy} onClick={confirm}><Icon name="check" size={17} /> Да, добавить</button><button className="cancel-button" disabled={busy} onClick={() => { setPending(undefined); append({ role: 'assistant', text: 'Добавление отменено. Корзина не изменилась.' }) }}>Отмена</button></div></div>}{message.cartUrl && <a className="cart-link" href={message.cartUrl} onClick={event => { if (message.cartUrl === '#cart') { event.preventDefault(); navigate('cart'); setChatOpen(false) } }}>{message.cartUrl.includes('checkout-delivery') ? 'Условия на ekt.kz' : 'Открыть корзину'} <Icon name="arrow" size={16} /></a>}</div></div>)}{busy && <div className="typing"><span /><span /><span /></div>}<div ref={endRef} /></div><div className="quick-prompts"><button onClick={() => send(apiEnabled ? 'Наличие DEMO-CABLE-VVG-3X2-5' : 'Есть кабель ВВГ 3×2,5?')}>Проверить наличие</button><button onClick={() => send(apiEnabled ? 'Характеристики DEMO-CABLE-VVG-3X2-5' : 'Подбери аналог кабеля ВВГ')}>{apiEnabled ? 'Характеристики' : 'Подобрать аналог'}</button><button onClick={() => send('Какие условия доставки и оплаты?')}>Доставка и оплата</button></div><form className="chat-composer" onSubmit={event => { event.preventDefault(); void send() }}><input ref={fileRef} className="visually-hidden" type="file" accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png" onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /><button type="button" className="attach-button" disabled={busy} onClick={() => fileRef.current?.click()} aria-label="Прикрепить файл"><Icon name="clip" size={21} /></button><input maxLength={4000} value={input} onChange={event => setInput(event.target.value)} placeholder="Напишите вопрос о товаре…" aria-label="Сообщение ассистенту" /><button type="submit" className="send-button" disabled={busy || !input.trim()} aria-label="Отправить сообщение"><Icon name="send" size={19} /></button></form><div className="chat-disclaimer">Прототип: каталог может содержать демоданные. Корзина ekt.kz не подключена.</div></section>}
   </>
 }
 

@@ -1,16 +1,20 @@
 [project]
 name = "hack-4cfe9779-k14"
 version = "0.1.0"
-description = "Add your description here"
+description = "Standalone EKT shopping consultant powered by GPT-6 Luna"
 readme = "README.md"
 authors = [
     { name = "Talgat", email = "tomyrkanov@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "openai>=2.0,<3",
+    "pydantic>=2.11,<3",
+]
 
 [project.scripts]
 hack-4cfe9779-k14 = "hack_4cfe9779_k14:main"
+ekt-consultant = "hack_4cfe9779_k14.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.12,<0.13.0"]

@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -12,7 +13,7 @@ class ChatAttachmentRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def store(self, session_id: UUID, result: AttachmentResult) -> ChatAttachment:
+    async def store(self, session_id: UUID, result: AttachmentResult, expires_at: datetime) -> ChatAttachment:
         attachment = ChatAttachment(
             session_id=session_id,
             filename=result.filename,
@@ -22,6 +23,7 @@ class ChatAttachmentRepository:
             tables=[table.model_dump(mode="json") for table in result.tables],
             warnings=result.warnings,
             metadata_json=result.metadata,
+            expires_at=expires_at,
         )
         self.session.add(attachment)
         await self.session.commit()
@@ -35,6 +37,7 @@ class ChatAttachmentRepository:
             select(ChatAttachment).where(
                 ChatAttachment.session_id == session_id,
                 ChatAttachment.id.in_(attachment_ids),
+                ChatAttachment.expires_at > datetime.now(timezone.utc),
             )
         )
         attachments = result.scalars().all()

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     attachment_max_xlsx_sheets: int = 20
     attachment_max_xlsx_rows: int = 10000
     attachment_max_xlsx_columns: int = 100
+    attachment_llm_max_chars: int = 12000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

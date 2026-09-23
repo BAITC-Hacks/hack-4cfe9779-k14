@@ -1,0 +1,69 @@
+{
+  "mode": "demo",
+  "sources": [
+    {"id": "demo-catalog", "title": "Синтетический каталог прототипа; первые четыре позиции согласованы с демовитриной web/src/main.tsx", "url": null, "as_of": null}
+  ],
+  "purchase_terms": [],
+  "compatibility_keys": {
+    "Кабель / Провод": ["material", "cores", "section_mm2", "voltage_v", "fire_class"],
+    "Низковольтная аппаратура": ["poles", "current_a", "curve", "breaking_capacity_ka", "voltage_v", "mounting"]
+  },
+  "products": [
+    {
+      "id": "cable-vvg-100", "sku": "05030003", "name": "Кабель ВВГ 3×2,5 0,66 кВ",
+      "category": "Кабель / Провод", "price": 780, "stock": 0, "unit": "м", "art": "cable",
+      "specs": ["Медная жила", "3 жилы × 2,5 мм²", "Напряжение 0,66 кВ"],
+      "attributes": {"material": "медь", "cores": "3", "section_mm2": "2.5", "voltage_v": "660", "fire_class": "ВВГ", "manufacturer": "Демо А"},
+      "certificates": [], "source_id": "demo-catalog"
+    },
+    {
+      "id": "cable-vvg-gost", "sku": "05030004", "name": "Кабель ВВГ 3×2,5 0,66 кВ ГОСТ EKT",
+      "category": "Кабель / Провод", "price": 802, "stock": 120, "unit": "м", "art": "cable",
+      "specs": ["Медная жила", "3 жилы × 2,5 мм²", "Напряжение 0,66 кВ"],
+      "attributes": {"material": "медь", "cores": "3", "section_mm2": "2.5", "voltage_v": "660", "fire_class": "ВВГ", "manufacturer": "Демо Б"},
+      "certificates": [], "source_id": "demo-catalog"
+    },
+    {
+      "id": "breaker-c16", "sku": "06020018", "name": "Автоматический выключатель 1P C16",
+      "category": "Низковольтная аппаратура", "price": 1690, "stock": 24, "unit": "шт.", "art": "breaker",
+      "specs": ["1 полюс", "Номинальный ток 16 А", "Характеристика C"],
+      "attributes": {"poles": "1", "current_a": "16", "curve": "C", "breaking_capacity_ka": "6", "voltage_v": "230", "mounting": "DIN", "manufacturer": "Демо А"},
+      "certificates": [], "source_id": "demo-catalog"
+    },
+    {
+      "id": "lamp-led-18", "sku": "04010012", "name": "Светильник LED 18 Вт IP65",
+      "category": "Светильники / Лампы", "price": 5900, "stock": 7, "unit": "шт.", "art": "lamp",
+      "specs": ["Мощность 18 Вт", "Степень защиты IP65", "Белый свет"],
+      "attributes": {"power_w": "18", "ip": "IP65", "voltage_v": "230"},
+      "certificates": [], "source_id": "demo-catalog"
+    },
+    {
+      "id": "demo-breaker-c16-b", "sku": "DEMO-016-B", "name": "Автоматический выключатель 1P C16 Демо Б",
+      "category": "Низковольтная аппаратура", "price": 1750, "stock": 12, "unit": "шт.", "art": "breaker",
+      "specs": ["1 полюс", "Номинальный ток 16 А", "Характеристика C", "Отключающая способность 6 кА"],
+      "attributes": {"poles": "1", "current_a": "16", "curve": "C", "breaking_capacity_ka": "6", "voltage_v": "230", "mounting": "DIN", "manufacturer": "Демо Б"},
+      "certificates": [], "source_id": "demo-catalog"
+    },
+    {
+      "id": "demo-breaker-c25", "sku": "DEMO-025", "name": "Автоматический выключатель 1P C25",
+      "category": "Низковольтная аппаратура", "price": 1800, "stock": 18, "unit": "шт.", "art": "breaker",
+      "specs": ["1 полюс", "Номинальный ток 25 А", "Характеристика C"],
+      "attributes": {"poles": "1", "current_a": "25", "curve": "C", "breaking_capacity_ka": "6", "voltage_v": "230", "mounting": "DIN", "manufacturer": "Демо Б"},
+      "certificates": [], "source_id": "demo-catalog"
+    },
+    {
+      "id": "demo-cable-15", "sku": "DEMO-015", "name": "Кабель ВВГ 3×1,5 0,66 кВ",
+      "category": "Кабель / Провод", "price": 540, "stock": 200, "unit": "м", "art": "cable",
+      "specs": ["Медная жила", "3 жилы × 1,5 мм²", "Напряжение 0,66 кВ"],
+      "attributes": {"material": "медь", "cores": "3", "section_mm2": "1.5", "voltage_v": "660", "fire_class": "ВВГ", "manufacturer": "Демо Б"},
+      "certificates": [], "source_id": "demo-catalog"
+    },
+    {
+      "id": "demo-cable-ls", "sku": "DEMO-LS-025", "name": "Кабель ВВГнг-LS 3×2,5 0,66 кВ",
+      "category": "Кабель / Провод", "price": 950, "stock": 60, "unit": "м", "art": "cable",
+      "specs": ["Медная жила", "3 жилы × 2,5 мм²", "Напряжение 0,66 кВ", "Исполнение нг-LS"],
+      "attributes": {"material": "медь", "cores": "3", "section_mm2": "2.5", "voltage_v": "660", "fire_class": "ВВГнг-LS", "manufacturer": "Демо Б"},
+      "certificates": [], "source_id": "demo-catalog"
+    }
+  ]
+}

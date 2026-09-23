@@ -1,6 +1,6 @@
 # Chat Service Backend
 
-Базовый backend чат-сервиса на Python, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. Добавлен изолированный серверный адаптер `EktClient` на `httpx`; интеграции с LLM и обработка файлов не входят в проект.
+Backend чат-сервиса на Python, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. EKT, LLM и обработка пользовательских вложений изолированы в серверных адаптерах и сервисах.
 
 ## Архитектура
 
@@ -85,6 +85,12 @@ pytest
 | `EKT_API_BASE_URL` | Базовый URL API ekt.kz | `https://ekt.kz/api/` |
 | `EKT_API_USERNAME` | Basic Auth логин, только сервер | не задан |
 | `EKT_API_PASSWORD` | Basic Auth пароль, только сервер | не задан |
+| `LLM_API_URL` | URL OpenAI-compatible LLM endpoint, только сервер | не задан |
+| `LLM_API_KEY` | API key LLM, только сервер | не задан |
+| `LLM_MODEL` | Имя модели | не задан |
+| `LLM_HISTORY_MESSAGE_LIMIT` | Максимум сообщений, передаваемых LLM | `12` |
+| `ATTACHMENT_MAX_BYTES` | Максимальный размер загрузки | `10485760` |
+| `ATTACHMENT_LLM_MAX_CHARS` | Общий лимит извлечённого текста для LLM | `12000` |
 
 Compose defaults предназначены для локальной разработки. Для общего/боевого окружения задайте собственный пароль через некоммитящийся `.env` или секреты платформы.
 
@@ -116,4 +122,6 @@ API чата создаёт сессии, сохраняет user/assistant со
 
 ## Вложения
 
-`POST /api/attachments` принимает PDF, DOCX, XLSX, JPEG/JPG и PNG и возвращает нормализованный текст, таблицы, warnings и metadata. Формат проверяется по расширению, MIME type и фактическому содержимому. PDF обрабатывается `pypdf`, DOCX — `python-docx`, XLSX — `openpyxl` в read-only режиме, изображения — Tesseract OCR. Вложения пока не отправляются в LLM. Лимиты и pipeline: [docs/attachments.md](docs/attachments.md).
+`POST /api/attachments` принимает PDF, DOCX, XLSX, JPEG/JPG и PNG и возвращает нормализованный текст, таблицы, warnings и metadata. Формат проверяется по расширению, MIME type и фактическому содержимому. PDF обрабатывается `pypdf`, DOCX — `python-docx`, XLSX — `openpyxl` в read-only режиме, изображения — Tesseract OCR.
+
+Для чата используйте `POST /api/chat/sessions/{session_id}/attachments`, затем добавьте полученные `id` в `attachment_ids` при вызове `POST /api/chat/sessions/{session_id}/messages`. Бинарные файлы не попадают в LLM: в модель передаётся только ограниченный извлечённый текст как недоверенные данные. Позиции из текста и таблиц ищутся через `CatalogService`, а для единственного совпадения цена, остаток и доступность проверяются через EKT. Корзина по вложению не меняется автоматически; требуется существующий `PendingOffer` и явное подтверждение. Полный flow: [docs/chat-attachments.md](docs/chat-attachments.md).

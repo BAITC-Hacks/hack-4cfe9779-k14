@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.attachment_parsing import AttachmentItemMatch
 from app.schemas.analogs import AnalogSuggestion
+from app.schemas.offers import PendingOfferView
 from app.schemas.purchase_conditions import PurchaseConditions
 
 
@@ -101,3 +102,4 @@ class ChatReply(BaseModel):
     attachment_items: list[AttachmentItemMatch] = Field(default_factory=list)
     purchase_conditions: PurchaseConditions | None = None
     analogs: list[AnalogSuggestion] = Field(default_factory=list)
+    pending_offer: PendingOfferView | None = None

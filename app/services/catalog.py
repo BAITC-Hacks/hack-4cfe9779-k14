@@ -87,8 +87,13 @@ class CatalogService:
             match_type="full_text" if products else "none",
         )
 
-    async def get_fresh_product(self, article: str) -> FreshCatalogProduct:
-        """Fetch direct adapter details; never substitute indexed cache values."""
+    async def get_fresh_product(self, article: str, *, persist: bool = True) -> FreshCatalogProduct:
+        """Fetch direct adapter details; never substitute indexed cache values.
+
+        Offer confirmation passes ``persist=False`` while it holds its own DB
+        transaction: freshness is still obtained from the adapter, but the
+        search-index cache is not committed inside that transaction.
+        """
         if self._adapter is None:
             raise CatalogUnavailable("Catalog adapter is not configured")
         try:
@@ -97,7 +102,8 @@ class CatalogService:
             raise ResourceNotFound("Product article was not found") from None
         except CatalogAdapterError as exc:
             raise self._public_adapter_error(exc) from None
-        await self._repository.upsert(product)
+        if persist:
+            await self._repository.upsert(product)
         return FreshCatalogProduct.model_validate(product.model_dump() | {"fresh": True})
 
     async def get_current_availability(self, article: str) -> CurrentAvailability:

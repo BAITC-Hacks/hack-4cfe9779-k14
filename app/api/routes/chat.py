@@ -8,13 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.database import get_db
 from app.integrations.llm_client import LLMConfigurationError, OpenAICompatibleLLMClient, UnavailableLLMClient
 from app.integrations.catalog_adapter import build_catalog_adapter
+from app.integrations.cart_gateway import build_cart_gateway
 from app.repositories.catalog import CatalogRepository
 from app.repositories.attachments import ChatAttachmentRepository
 from app.repositories.chat import ChatRepository
+from app.repositories.offers import OfferRepository
 from app.schemas.chat import ChatHistoryResponse, ChatMessageCreate, ChatReply, ChatSessionCreated
 from app.services.catalog import CatalogService
 from app.services.analogs import AnalogService
 from app.services.chat import ChatService
+from app.services.offer_product_provider import CatalogCurrentProductProvider
+from app.services.offers import OfferService
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -32,6 +36,9 @@ async def get_chat_service(session: AsyncSession = Depends(get_db)) -> AsyncGene
             llm=llm,
             attachments=ChatAttachmentRepository(session),
             analogs=AnalogService(catalog),
+            offer_proposals=OfferService(
+                OfferRepository(session), CatalogCurrentProductProvider(catalog), build_cart_gateway()
+            ),
         )
     finally:
         await llm.aclose()

@@ -24,6 +24,7 @@ flowchart LR
     API --> Chat[ChatService]
     Chat --> LLM[LLMClient]
     Chat --> Catalog[CatalogService]
+    Chat --> Proposal[OfferProposalCreator]
     Upload[Файл] --> Attachment[AttachmentService]
     Attachment --> Parser[AttachmentItemParser]
     Parser --> Catalog
@@ -130,6 +131,7 @@ pytest
 | `LLM_HISTORY_MESSAGE_LIMIT` | Максимум сообщений, передаваемых LLM | `12` |
 | `PENDING_OFFER_TTL_SECONDS` | Срок явного подтверждения предложения | `300` |
 | `IDEMPOTENCY_KEY_TTL_SECONDS` | Срок хранения результата подтверждения | `86400` |
+| `CART_ADAPTER_MODE` | `unavailable` (безопасный default) или явный local `mock` | `unavailable` |
 | `ATTACHMENT_MAX_BYTES` | Максимальный размер загрузки | `10485760` |
 | `ATTACHMENT_LLM_MAX_CHARS` | Общий лимит извлечённого текста для LLM | `12000` |
 | `ATTACHMENT_TTL_SECONDS` | Срок хранения нормализованных attachment-данных | `86400` |
@@ -161,13 +163,13 @@ API чата создаёт сессии, сохраняет user/assistant со
 - `POST /api/chat/sessions/{session_id}/messages`
 - `GET /api/chat/sessions/{session_id}/messages`
 
-`ChatService` зависит от абстрактного `LLMClient`, а текущая реализация использует настраиваемый OpenAI-compatible HTTP endpoint без SDK. Модель выдаёт валидируемый Pydantic structured output, но не получает доступ к PostgreSQL, ekt.kz или корзине. Корзина не изменяется ни при каком ответе LLM. Лимит истории и необходимые environment variables приведены в [docs/chat-flow.md](docs/chat-flow.md).
+`ChatService` зависит от абстрактного `LLMClient`, а текущая реализация использует настраиваемый OpenAI-compatible HTTP endpoint без SDK. Модель выдаёт валидируемый Pydantic structured output, но не получает доступ к PostgreSQL, ekt.kz или корзине. Для cart intent сервер может создать только `pending_offer` по своей свежей карточке и количеству; у LLM нет cart gateway или confirm-operation. Корзина не изменяется ни при каком ответе LLM. Лимит истории и необходимые environment variables приведены в [docs/chat-flow.md](docs/chat-flow.md).
 
 Диалог хранит историю строго внутри `chat session`. Детерминированный router обрабатывает SKU, характеристики, наличие, сертификаты, цены, аналоги и условия покупки; для свободного текста LLM остаётся только provider-isolated классификатором. Любые факты о товаре берутся исключительно из `CatalogService`: свежие сертификаты/характеристики — через adapter details, наличие/цена — через current availability. Аналоги дополнительно проходят `AnalogService` compatibility filters до ranking. Несколько кандидатов вызывают уточнение, а не автоматический выбор. [Условия покупки](docs/purchase-conditions.md) читаются из отдельного reviewable provider; текущие demo placeholders не являются условиями ekt.kz.
 
 ## Подтверждение корзины
 
-Предложение создаётся через `POST /api/chat/sessions/{session_id}/offers`, а подтверждение требует конкретный `offer_id` и `Idempotency-Key` в `POST /api/chat/sessions/{session_id}/offers/{offer_id}/confirm`. Сервис блокирует предложение в транзакции, повторно проверяет EKT и выполняет cart write только при неизменных цене и остатке. При смене цены создаётся новый offer; при недоступности EKT, недостатке остатка или ошибке корзины запись не производится. Полный transaction flow: [docs/offer-confirmation-flow.md](docs/offer-confirmation-flow.md).
+Предложение создаётся через `POST /api/chat/sessions/{session_id}/offers`, а подтверждение требует конкретный `offer_id` и `Idempotency-Key` в `POST /api/chat/sessions/{session_id}/offers/{offer_id}/confirm`. Сервис блокирует предложение в транзакции, повторно проверяет EKT и выполняет cart write только при неизменных цене и остатке. После write он обязательно читает корзину и подтверждает результат только по фактической позиции/количеству. При смене цены создаётся новый offer; при недоступности EKT, недостатке остатка, ошибке корзины или несоответствии read-back запись не считается успешной. Production cart adapter не подключён: default `unavailable`; явный `mock` предназначен только для local demo. Полный transaction flow: [docs/offer-confirmation-flow.md](docs/offer-confirmation-flow.md).
 
 ## Вложения
 
@@ -190,9 +192,9 @@ python -m app.maintenance
 1. Клиент создаёт chat session.
 2. Он отправляет текст или загрузку в эту сессию, а затем `attachment_ids` вместе с сообщением.
 3. `AttachmentService` извлекает данные, `LLMClient` определяет intent, а `CatalogService` выполняет точный поиск по артикулу или полнотекстовый поиск.
-4. При создании предложения `OfferService` получает актуальные цену и остаток у EKT и создаёт `PendingOffer`.
+4. Cart intent в чате либо явный `POST /offers` создают `PendingOffer`; сервер получает актуальные цену и остаток через свежую карточку каталога. Никакой текст «да» не подтверждает предложение.
 5. Клиент подтверждает именно возвращённый `offer_id` с `Idempotency-Key`.
-6. `OfferService` блокирует offer, повторно проверяет EKT и только затем вызывает `CartGateway`.
+6. `OfferService` блокирует offer, повторно проверяет EKT, вызывает `CartGateway` и читает итоговую корзину. Успех возвращается только когда read-back подтвердил позицию и количество.
 
 Если EKT недоступен, данные о цене и остатке не подтверждаются. При изменении цены создаётся новое предложение, требующее нового явного подтверждения.
 

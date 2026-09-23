@@ -7,9 +7,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.integrations.cart_gateway import CartUnavailableError
+from app.integrations.cart_gateway import MockCartGateway, UnavailableCartGateway
 from app.integrations.ekt_client import EktConnectionError, EktProduct
-from app.schemas.offers import CreateOfferRequest, PendingOfferStatus
+from app.schemas.offers import CartItem, CartReference, CartSnapshot, CartWriteResult, CreateOfferRequest, PendingOfferStatus
 from app.services.offers import OfferService
 
 pytestmark = pytest.mark.asyncio
@@ -20,6 +20,7 @@ class FakeOfferRepository:
         self.offers = {}
         self.idempotency = {}
         self.lock = asyncio.Lock()
+        self.has_session = True
 
     @asynccontextmanager
     async def transaction(self):
@@ -27,7 +28,8 @@ class FakeOfferRepository:
             yield
 
     async def session_exists(self, session_id):
-        return True
+        del session_id
+        return self.has_session
 
     async def create_offer(self, offer):
         offer.id = uuid4()
@@ -70,15 +72,43 @@ class FakeCart:
     def __init__(self, error=None):
         self.error = error
         self.calls = []
+        self.read_calls = []
+        self.items = {}
+        self.snapshot_override = None
 
-    async def add_item(self, **kwargs):
+    source_label = "test cart"
+
+    async def resolve_cart(self, *, session_id):
+        return CartReference(cart_id=f"cart-{session_id}", owner_session_id=session_id)
+
+    async def add_item(self, *, cart, product_identifier, quantity, idempotency_key):
+        kwargs = {
+            "cart": cart,
+            "product_identifier": product_identifier,
+            "quantity": quantity,
+            "idempotency_key": idempotency_key,
+        }
         self.calls.append(kwargs)
         await asyncio.sleep(0)
         if self.error:
             raise self.error
-        from app.schemas.offers import CartWriteResult
+        self.items[product_identifier] = self.items.get(product_identifier, 0) + quantity
+        return CartWriteResult(cart_id=cart.cart_id, operation_id=f"op-{idempotency_key}")
 
-        return CartWriteResult(cart_url="https://cart.invalid/current")
+    async def set_item_quantity(self, *, cart, product_identifier, quantity, idempotency_key):
+        self.items[product_identifier] = quantity
+        return CartWriteResult(cart_id=cart.cart_id, operation_id=f"set-{idempotency_key}")
+
+    async def get_cart(self, *, cart):
+        self.read_calls.append(cart)
+        if self.snapshot_override is not None:
+            return self.snapshot_override
+        return CartSnapshot(
+            cart_id=cart.cart_id,
+            items=[CartItem(product_identifier=key, quantity=value) for key, value in self.items.items()],
+            cart_url="https://cart.invalid/current",
+            source_label=self.source_label,
+        )
 
 
 async def create_offer(service, session_id):
@@ -96,7 +126,10 @@ async def test_successful_confirmation_rechecks_and_writes_cart() -> None:
     assert result.outcome == "confirmed"
     assert result.offer.status == PendingOfferStatus.CONFIRMED
     assert result.cart_url == "https://cart.invalid/current"
+    assert result.cart is not None
+    assert result.cart.items == [CartItem(product_identifier="product-1", quantity=2)]
     assert len(cart.calls) == 1
+    assert len(cart.read_calls) == 1
     assert ekt.calls == 2  # create + confirmation recheck
 
 
@@ -110,7 +143,9 @@ async def test_same_idempotency_key_does_not_add_twice() -> None:
     second = await service.confirm_offer(session_id, offer.offer_id, "idem-key-1")
 
     assert first == second
+    assert second.cart is not None
     assert len(cart.calls) == 1
+    assert len(cart.read_calls) == 1
 
 
 async def test_expired_offer_is_not_written_to_cart() -> None:
@@ -125,6 +160,100 @@ async def test_expired_offer_is_not_written_to_cart() -> None:
     assert result.outcome == "expired"
     assert result.offer.status == PendingOfferStatus.EXPIRED
     assert cart.calls == []
+
+
+async def test_offer_is_bound_to_its_session_and_cart_context_is_server_owned() -> None:
+    repository, ekt, cart = FakeOfferRepository(), FakeEkt(), FakeCart()
+    service = OfferService(repository, ekt, cart)
+    owner_session, other_session = uuid4(), uuid4()
+    offer = await create_offer(service, owner_session)
+
+    with pytest.raises(Exception) as error:
+        await service.confirm_offer(other_session, offer.offer_id, "idem-key-1")
+
+    assert getattr(error.value, "code") == "not_found"
+    assert cart.calls == []
+    assert offer.cart_context == {"owner_type": "chat_session", "owner_session_id": str(owner_session)}
+
+
+async def test_missing_session_is_rejected_before_fresh_catalog_request() -> None:
+    repository, ekt, cart = FakeOfferRepository(), FakeEkt(), FakeCart()
+    repository.has_session = False
+    service = OfferService(repository, ekt, cart)
+
+    with pytest.raises(Exception) as error:
+        await create_offer(service, uuid4())
+
+    assert getattr(error.value, "code") == "not_found"
+    assert ekt.calls == 0
+
+
+async def test_read_after_write_mismatch_fails_without_claiming_cart_success() -> None:
+    repository, ekt, cart = FakeOfferRepository(), FakeEkt(), FakeCart()
+    service = OfferService(repository, ekt, cart)
+    session_id = uuid4()
+    offer = await create_offer(service, session_id)
+    cart.snapshot_override = CartSnapshot(
+        cart_id=f"cart-{session_id}",
+        items=[],
+        cart_url="https://cart.invalid/current",
+        source_label="test cart",
+    )
+
+    result = await service.confirm_offer(session_id, offer.offer_id, "idem-key-1")
+
+    assert result.outcome == "cart_readback_invalid"
+    assert result.cart is None and result.cart_url is None
+    assert result.offer.status == PendingOfferStatus.FAILED
+    assert len(cart.calls) == 1 and len(cart.read_calls) == 1
+
+
+async def test_unavailable_production_gateway_never_claims_a_mock_cart_write() -> None:
+    repository, ekt = FakeOfferRepository(), FakeEkt()
+    service = OfferService(repository, ekt, UnavailableCartGateway())
+    session_id = uuid4()
+    offer = await create_offer(service, session_id)
+
+    result = await service.confirm_offer(session_id, offer.offer_id, "idem-key-1")
+
+    assert result.outcome == "cart_unavailable"
+    assert result.offer.status == PendingOfferStatus.FAILED
+    assert result.cart is None and result.cart_url is None
+
+
+async def test_mock_cart_is_session_bound_idempotent_and_readable() -> None:
+    cart = MockCartGateway()
+    first, second = uuid4(), uuid4()
+    first_cart = await cart.resolve_cart(session_id=first)
+    second_cart = await cart.resolve_cart(session_id=second)
+
+    initial = await cart.add_item(
+        cart=first_cart, product_identifier="product-1", quantity=2, idempotency_key="operation-1",
+    )
+    repeated = await cart.add_item(
+        cart=first_cart, product_identifier="product-1", quantity=2, idempotency_key="operation-1",
+    )
+    await cart.set_item_quantity(
+        cart=second_cart, product_identifier="product-1", quantity=4, idempotency_key="operation-2",
+    )
+
+    assert initial == repeated
+    assert (await cart.get_cart(cart=first_cart)).items == [CartItem(product_identifier="product-1", quantity=2)]
+    assert (await cart.get_cart(cart=second_cart)).items == [CartItem(product_identifier="product-1", quantity=4)]
+
+
+async def test_same_client_key_for_different_offers_uses_distinct_cart_operations() -> None:
+    repository, ekt, cart = FakeOfferRepository(), FakeEkt(), MockCartGateway()
+    service = OfferService(repository, ekt, cart)
+    session_id = uuid4()
+    first = await create_offer(service, session_id)
+    second = await create_offer(service, session_id)
+
+    await service.confirm_offer(session_id, first.offer_id, "same-client-key")
+    await service.confirm_offer(session_id, second.offer_id, "same-client-key")
+
+    current_cart = await cart.get_cart(cart=await cart.resolve_cart(session_id=session_id))
+    assert current_cart.items == [CartItem(product_identifier="product-1", quantity=4)]
 
 
 async def test_price_change_creates_new_offer_and_requires_new_confirmation() -> None:

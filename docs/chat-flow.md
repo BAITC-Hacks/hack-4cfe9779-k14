@@ -21,7 +21,7 @@
 8. Для условий покупки сервис читает `PurchaseConditionsProvider`, а не prompt LLM. Demo-provider явно сообщает, что реальные условия ekt.kz не предоставлены.
 9. Сервис формирует grounded ответ, сохраняет выбранный контекст в metadata assistant-сообщения и возвращает его клиенту.
 
-`add_to_cart_request` — только классификация намерения. Чат отвечает, что товар не добавлен. Ни `LLMClient`, ни `ChatService` не вызывают API корзины; отдельная серверная логика предложения и явного подтверждения потребуется позже.
+`add_to_cart_request` — только классификация намерения. Если сервер может получить свежую карточку, external product id и количество, `ChatService` передаёт их узкому `OfferProposalCreator.create_offer` и возвращает `pending_offer` в `ChatReply`. Это создаёт только ожидающее подтверждения предложение; `ChatService` и `LLMClient` не получают `CartGateway` и не имеют метода confirmation. Товар не добавляется, пока browser не вызовет отдельный endpoint с конкретным `offer_id` и `Idempotency-Key`.
 
 ## LLM abstraction
 

@@ -7,25 +7,24 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_db
-from app.integrations.cart_gateway import UnavailableCartGateway
-from app.integrations.ekt_client import EktConnectionError
+from app.integrations.catalog_adapter import build_catalog_adapter
+from app.integrations.cart_gateway import build_cart_gateway
+from app.repositories.catalog import CatalogRepository
 from app.repositories.offers import OfferRepository
 from app.schemas.offers import ConfirmOfferResult, CreateOfferRequest, PendingOfferView
 from app.services.offers import OfferService
+from app.services.catalog import CatalogService
+from app.services.offer_product_provider import CatalogCurrentProductProvider
 
 router = APIRouter(prefix="/api/chat/sessions/{session_id}/offers", tags=["offers"])
 
 
-class UnavailableEktClient:
-    async def get_current_product_by_article(self, article: str):
-        del article
-        raise EktConnectionError("EKT client is not configured")
-
-
 async def get_offer_service(session: AsyncSession = Depends(get_db)) -> AsyncGenerator[OfferService, None]:
     # A real EKT mapper and cart gateway must be injected after partner API
-    # documentation is available. These safe placeholders never write a cart.
-    yield OfferService(OfferRepository(session), UnavailableEktClient(), UnavailableCartGateway())
+    # documentation is available. The default gateway never writes a cart;
+    # CART_ADAPTER_MODE=mock is explicit local demo infrastructure only.
+    catalog = CatalogService(CatalogRepository(session), adapter=build_catalog_adapter())
+    yield OfferService(OfferRepository(session), CatalogCurrentProductProvider(catalog), build_cart_gateway())
 
 
 Offer = Annotated[OfferService, Depends(get_offer_service)]

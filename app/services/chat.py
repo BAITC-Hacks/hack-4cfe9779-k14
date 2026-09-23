@@ -28,6 +28,8 @@ from app.services.analogs import AnalogService
 from app.services.catalog import CatalogService
 from app.services.dialogue_router import DeterministicDialogueRouter, DialogueContext
 from app.services.errors import ApplicationError, ResourceNotFound
+from app.schemas.offers import CreateOfferRequest, PendingOfferView
+from app.services.offers import OfferProposalCreator
 from app.services.purchase_conditions import DemoPurchaseConditionsProvider, PurchaseConditionsProvider
 
 
@@ -39,6 +41,7 @@ class DialogueResolution:
     selected_article: str | None
     purchase_conditions: PurchaseConditions | None = None
     analogs: list[AnalogSuggestion] | None = None
+    pending_offer: PendingOfferView | None = None
 
 
 class ChatService:
@@ -54,6 +57,7 @@ class ChatService:
         router: DeterministicDialogueRouter | None = None,
         purchase_conditions: PurchaseConditionsProvider | None = None,
         analogs: AnalogService | None = None,
+        offer_proposals: OfferProposalCreator | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
@@ -63,6 +67,7 @@ class ChatService:
         self._router = router or DeterministicDialogueRouter()
         self._purchase_conditions = purchase_conditions or DemoPurchaseConditionsProvider()
         self._analogs = analogs
+        self._offer_proposals = offer_proposals
         self._history_limit = get_settings().llm_history_message_limit
 
     async def create_session(self) -> ChatSessionCreated:
@@ -85,7 +90,7 @@ class ChatService:
         user_message = await self._repository.add_message(session_id, ChatRole.USER, payload.content.strip())
         history = await self._repository.history(session_id, limit=self._history_limit)
         analysis = await self._analyze(payload.content, history, attachment_results, context)
-        resolution = await self._resolve_analysis(analysis, context)
+        resolution = await self._resolve_analysis(session_id, analysis, context)
 
         attachment_items = await self._resolve_attachment_items(attachment_results)
         if attachment_items:
@@ -114,6 +119,7 @@ class ChatService:
             attachment_items=attachment_items,
             purchase_conditions=resolution.purchase_conditions,
             analogs=resolution.analogs or [],
+            pending_offer=resolution.pending_offer,
         )
 
     async def _analyze(
@@ -143,7 +149,9 @@ class ChatService:
             return analysis.model_copy(update={"article": context.selected_article})
         return analysis
 
-    async def _resolve_analysis(self, analysis: ChatAnalysis, context: DialogueContext) -> DialogueResolution:
+    async def _resolve_analysis(
+        self, session_id: UUID, analysis: ChatAnalysis, context: DialogueContext
+    ) -> DialogueResolution:
         selected_article = context.selected_article
         if analysis.needs_clarification:
             return DialogueResolution(
@@ -157,10 +165,7 @@ class ChatService:
                 return DialogueResolution("Укажите артикул товара, для которого нужен аналог.", [], None, selected_article)
             return await self._analog_resolution(analysis.article, selected_article)
         if analysis.intent == ChatIntent.ADD_TO_CART_REQUEST:
-            return DialogueResolution(
-                "Товар не добавлен. Для корзины требуется отдельное серверное предложение и явное подтверждение.",
-                [], None, selected_article,
-            )
+            return await self._create_offer_proposal(session_id, analysis, selected_article)
         if analysis.intent in (ChatIntent.CHECK_PRICE, ChatIntent.CHECK_STOCK, ChatIntent.CHECK_AVAILABILITY):
             if not analysis.article:
                 return DialogueResolution("Укажите артикул товара для проверки актуальных данных.", [], None, selected_article)
@@ -229,6 +234,51 @@ class ChatService:
             self._analogs_reply(result.candidates), [], None, result.source_article, analogs=result.candidates,
         )
 
+    async def _create_offer_proposal(
+        self,
+        session_id: UUID,
+        analysis: ChatAnalysis,
+        selected_article: str | None,
+    ) -> DialogueResolution:
+        if self._offer_proposals is None:
+            return DialogueResolution(
+                "Товар не добавлен. Для корзины требуется отдельное серверное предложение и явное подтверждение.",
+                [], None, selected_article,
+            )
+        if not analysis.article:
+            return DialogueResolution("Укажите артикул товара для предложения корзины.", [], None, selected_article)
+        if analysis.quantity is None:
+            return DialogueResolution("Укажите количество для предложения корзины.", [], None, analysis.article)
+        product, error = await self._fresh_product(analysis.article)
+        if error:
+            return DialogueResolution(error, [], None, selected_article)
+        assert product is not None
+        if product.external_id is None:
+            return DialogueResolution(
+                "Источник не предоставил идентификатор товара для предложения корзины.", [], None, product.article,
+            )
+        try:
+            offer = await self._offer_proposals.create_offer(
+                session_id,
+                CreateOfferRequest(
+                    product_identifier=product.external_id,
+                    article=product.article,
+                    quantity=analysis.quantity,
+                ),
+            )
+        except (ApplicationError, ValueError):
+            return DialogueResolution(
+                "Сейчас не удалось создать предложение по актуальным данным товара.", [], None, product.article,
+            )
+        return DialogueResolution(
+            f"Создано предложение {offer.offer_id} на {offer.quantity} шт. {offer.article}. "
+            "Товар не добавлен: подтвердите именно этот offer_id отдельным запросом.",
+            [],
+            None,
+            product.article,
+            pending_offer=offer,
+        )
+
     async def _fresh_product(self, article: str) -> tuple[FreshCatalogProduct | None, str | None]:
         try:
             return await self._catalog.get_fresh_product(article), None
@@ -242,7 +292,7 @@ class ChatService:
         return (
             ChatIntent.CHECK_PRICE, ChatIntent.CHECK_STOCK, ChatIntent.CHECK_AVAILABILITY,
             ChatIntent.CHECK_CERTIFICATES, ChatIntent.PRODUCT_CHARACTERISTICS,
-            ChatIntent.FIND_ANALOG,
+            ChatIntent.FIND_ANALOG, ChatIntent.ADD_TO_CART_REQUEST,
         )
 
     @staticmethod

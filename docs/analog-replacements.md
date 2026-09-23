@@ -1,6 +1,6 @@
 # Подбор аналогов и замен
 
-`AnalogService` подбирает замену только после строгой проверки совместимости. Semantic/text similarity не является доказательством совместимости и применяется исключительно для ранжирования уже допущенных кандидатов.
+`AnalogService` подбирает замену только после строгой проверки совместимости. Semantic/text similarity не является доказательством совместимости и применяется исключительно для ранжирования уже допущенных кандидатов. Пока правила не утверждены, runtime `UnavailableCompatibilityRules` fail-closed отклоняет всех кандидатов.
 
 ## Порядок обработки
 
@@ -14,9 +14,7 @@
 
 ## Конфигурация правил
 
-`app/services/compatibility.py` задаёт интерфейс `CompatibilityRules`, а `ConfiguredCompatibilityRules` принимает профили по категориям из `app/config/compatibility_rules.py`. Это domain/config extension point: production implementation или утверждённый configuration source могут быть подставлены в `AnalogService` без изменения dialogue, catalog или ranking-кода.
-
-Текущий `DemoCompatibilityRules` предназначен только для synthetic mock cable dataset и явно не утверждён для ekt.kz. Для категории `Кабель и провод` он требует точного совпадения `material`, `cores` и `cross_section_mm2`; бренд показывается как известное различие, но не является критерием взаимозаменяемости в demo-правиле.
+`app/services/compatibility.py` задаёт интерфейс `CompatibilityRules`, а `ConfiguredCompatibilityRules` принимает профили по категориям из `app/config/compatibility_rules.py`. Этот файл намеренно пуст, пока нет утверждённых правил. Production implementation или утверждённый configuration source могут быть подставлены в `AnalogService` без изменения dialogue, catalog или ranking-кода.
 
 До production запуска партнёр должен подтвердить: таксономию категорий, обязательные и запрещающие комбинации параметров для каждой категории, допустимые различия, признаки сертификации/регуляторных ограничений, правила замены бренда и доступный источник актуальных остатков. Пока такого контракта нет, отсутствующий профиль или любое отсутствующее критичное поле безопасно дают «нет подходящего аналога».
 

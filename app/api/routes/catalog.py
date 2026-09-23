@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 async def get_catalog_service(session: AsyncSession = Depends(get_db)) -> AsyncGenerator[CatalogService, None]:
     adapter = build_catalog_adapter()
     try:
-        yield CatalogService(CatalogRepository(session, source_origin="ekt/live" if get_settings().catalog_adapter_mode == "ekt" else "mock/demo"), adapter=adapter)
+        yield CatalogService(CatalogRepository(session, source_origin="ekt/live"), adapter=adapter)
     finally:
         await adapter.aclose()
 
@@ -46,9 +46,9 @@ class RuntimeStatus(BaseModel):
 async def runtime_status():
     settings = get_settings()
     configured = bool(settings.openai_api_key or (settings.llm_api_key and settings.llm_api_url and settings.llm_model))
-    return RuntimeStatus(catalog_source=settings.catalog_adapter_mode, model_configured=configured,
+    return RuntimeStatus(catalog_source="ekt" if settings.ekt_api_username and settings.ekt_api_password else "unavailable", model_configured=configured,
                          model=settings.openai_model if settings.openai_api_key else settings.llm_model or None,
-                         cart_mode=settings.cart_adapter_mode)
+                         cart_mode="unavailable")
 
 
 @router.post("/products", response_model=CatalogCandidate)

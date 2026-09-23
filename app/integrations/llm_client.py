@@ -38,7 +38,7 @@ class LLMClient(Protocol):
 
 
 class UnavailableLLMClient:
-    """Safe placeholder used when server-side LLM configuration is missing."""
+    """Explicit unavailable client used when server-side LLM configuration is missing."""
 
     async def analyze(self, history: list[ChatMessageView], attachment_data: list[AttachmentLlmContext] | None = None) -> ChatAnalysis:
         del history, attachment_data

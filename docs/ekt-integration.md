@@ -20,6 +20,6 @@ Detail refresh uses an indexed article's `external_id`, avoiding a repeated cata
 
 ## Configuration and security
 
-Set `CATALOG_ADAPTER_MODE=ekt`, `EKT_API_USERNAME`, `EKT_API_PASSWORD` in the ignored server `.env`. Base URL defaults to `https://ekt.kz/api/`. The example config defaults to explicit synthetic `mock` mode. `CART_ADAPTER_MODE=unavailable` remains the default independently of catalog mode.
+Set `EKT_API_USERNAME`, `EKT_API_PASSWORD` in the ignored server `.env`. Base URL defaults to `https://ekt.kz/api/`. Without EKT credentials the catalog stays unavailable. Backend runtime mock integrations were removed in dev2; the cart gateway remains unavailable.
 
 Credentials never go into browser code, Git, model inputs or HTTP logs. Redirects are disabled to avoid forwarding Basic Auth. GET retries apply only to connection/timeouts/5xx (`EKT_READ_RETRY_COUNT`, default 1, max 3; `EKT_RETRY_BACKOFF_SECONDS`, default 0.05). Auth, malformed JSON and other 4xx responses are not retried. Partner rate limits, price/tax terms and cart contracts still need confirmation.

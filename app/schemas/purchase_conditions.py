@@ -9,7 +9,6 @@ class PurchaseConditions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_label: str
-    is_demo: bool
     payment_methods: list[str] | None = None
     delivery: str | None = None
     minimum_order: str | None = None

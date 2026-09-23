@@ -1,23 +1,60 @@
-from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
-from app.integrations.catalog_adapter import (
-    CatalogAdapterMalformedResponseError,
-    EktCatalogAdapter,
-    MockCatalogAdapter,
-)
+from app.integrations.catalog_adapter import CatalogAdapterNotFoundError, EktCatalogAdapter
 from app.integrations.ekt_client import EktProduct
-from app.schemas.catalog import CatalogProductUpsert
+from app.schemas.catalog import CatalogPage, CatalogProductUpsert
 from app.services.catalog import CatalogService
 
 pytestmark = pytest.mark.asyncio
 
 
-def dataset_path() -> Path:
-    return Path(__file__).parents[1] / "testdata" / "mock_catalog.json"
+def products() -> list[CatalogProductUpsert]:
+    return [
+        CatalogProductUpsert(
+            article="TEST-CABLE-3X2-5", external_id="source-1", name="Cable 3x2.5", category="Cable",
+            characteristics={"cores": 3, "section": 2.5}, cached_stock_by_location={"A": 3},
+            cached_available=True, certificates=[{"number": "CERT-1"}], source_field_presence={"certificates": True},
+        ),
+        CatalogProductUpsert(
+            article="TEST-CABLE-3X1-5", external_id="source-2", name="Cable 3x1.5", category="Cable",
+            characteristics={"cores": 3, "section": 1.5}, cached_stock_by_location={"A": 0},
+            cached_available=False, certificates=[], source_field_presence={"certificates": True},
+        ),
+        CatalogProductUpsert(
+            article="TEST-CABLE-2X2-5", external_id="source-3", name="Cable 2x2.5", category="Cable",
+            characteristics={"cores": 2, "section": 2.5}, certificates=None,
+            source_field_presence={"certificates": False},
+        ),
+    ]
+
+
+class StaticTestAdapter:
+    """Test-only adapter double; it is not importable from application runtime."""
+
+    def __init__(self, entries: list[CatalogProductUpsert]) -> None:
+        self._entries = entries
+
+    async def get_product_by_article(self, article: str) -> CatalogProductUpsert:
+        for item in self._entries:
+            if item.article.casefold() == article.casefold():
+                return item
+        raise CatalogAdapterNotFoundError("not found")
+
+    async def get_product_details(self, external_id: str) -> CatalogProductUpsert:
+        for item in self._entries:
+            if item.external_id == external_id:
+                return item
+        raise CatalogAdapterNotFoundError("not found")
+
+    async def get_products_page(self, page: int = 1, *, page_size: int = 50) -> CatalogPage:
+        start = (page - 1) * page_size
+        return CatalogPage(page=page, products=self._entries[start : start + page_size], has_more=start + page_size < len(self._entries))
+
+    async def aclose(self) -> None:
+        return None
 
 
 def stored_product(payload: CatalogProductUpsert) -> SimpleNamespace:
@@ -25,117 +62,53 @@ def stored_product(payload: CatalogProductUpsert) -> SimpleNamespace:
 
 
 class MemoryCatalogRepository:
-    def __init__(self, products: list[SimpleNamespace] | None = None) -> None:
-        self.products = products or []
+    def __init__(self) -> None:
+        self.products: list[SimpleNamespace] = []
 
     async def upsert(self, payload: CatalogProductUpsert) -> SimpleNamespace:
-        product = stored_product(payload)
-        self.products = [item for item in self.products if item.article != payload.article]
-        self.products.append(product)
-        return product
+        item = stored_product(payload)
+        self.products = [existing for existing in self.products if existing.article != item.article]
+        self.products.append(item)
+        return item
 
     async def find_by_article(self, article: str) -> SimpleNamespace | None:
         return next((item for item in self.products if item.article == article), None)
 
     async def full_text_search(self, query, *, characteristics=None, limit=20):
-        results = self.products
+        values = self.products
         if query:
-            needle = query.casefold()
-            results = [
-                item
-                for item in results
-                if needle in " ".join(
-                    str(value or "")
-                    for value in (item.name, item.category, item.description, item.brand, item.characteristics, item.source_fields)
-                ).casefold()
-            ]
+            values = [item for item in values if query.casefold() in str(item.model_dump() if hasattr(item, "model_dump") else item.__dict__).casefold()]
         if characteristics:
-            results = [
-                item for item in results
-                if all(item.characteristics.get(key) == value for key, value in characteristics.items())
-            ]
-        return results[:limit]
+            values = [item for item in values if all(item.characteristics.get(key) == value for key, value in characteristics.items())]
+        return values[:limit]
 
 
-async def test_mock_adapter_exact_sku_is_exact_and_unknown_is_not_a_near_match() -> None:
-    adapter = MockCatalogAdapter.from_file(dataset_path())
+async def test_adapter_contract_supports_exact_lookup_and_pagination() -> None:
+    adapter = StaticTestAdapter(products())
 
-    product = await adapter.get_product_by_article("demo-cable-vvg-3x2-5")
+    exact = await adapter.get_product_by_article("test-cable-3x2-5")
+    page = await adapter.get_products_page(1, page_size=2)
 
-    assert product.article == "DEMO-CABLE-VVG-3X2-5"
-    assert product.cached_stock_by_location == {"Алматы": 120, "Астана": 45}
-    with pytest.raises(Exception) as error:
-        await adapter.get_product_by_article("DEMO-UNKNOWN-404")
-    assert getattr(error.value, "code") == "catalog_not_found"
-
-
-async def test_mock_adapter_paginates_and_preserves_present_null_vs_missing_fields() -> None:
-    adapter = MockCatalogAdapter.from_file(dataset_path())
-
-    first = await adapter.get_products_page(1, page_size=2)
-    second = await adapter.get_products_page(2, page_size=2)
-    unknown_certificate = await adapter.get_product_by_article("DEMO-CABLE-VVG-2X2-5")
-
-    assert [product.article for product in first.products] == ["DEMO-CABLE-VVG-3X2-5", "DEMO-CABLE-VVG-3X1-5"]
-    assert first.has_more is True
-    assert len(second.products) == 2 and second.has_more is True
-    assert unknown_certificate.certificates is None
-    assert unknown_certificate.source_field_presence["certificates"] is True
-    assert unknown_certificate.source_field_presence["description"] is False
+    assert exact.article == "TEST-CABLE-3X2-5"
+    assert [item.article for item in page.products] == ["TEST-CABLE-3X2-5", "TEST-CABLE-3X1-5"]
+    assert page.has_more is True
+    with pytest.raises(CatalogAdapterNotFoundError):
+        await adapter.get_product_by_article("UNKNOWN-404")
 
 
-async def test_index_searches_name_category_and_specifications_with_adapter_independence() -> None:
-    adapter = MockCatalogAdapter.from_file(dataset_path())
+async def test_catalog_index_search_and_fresh_fields_use_only_adapter_values() -> None:
     repository = MemoryCatalogRepository()
-    service = CatalogService(repository, adapter=adapter)
+    service = CatalogService(repository, adapter=StaticTestAdapter(products()))
 
     refreshed = await service.refresh_index(page_size=2)
-    by_name = await service.search_candidates("ВВГнг")
-    by_category = await service.search_candidates("Кабель и провод")
-    by_specification = await service.search_candidates(None, characteristics={"material": "алюминий"})
+    by_name = await service.search_candidates("Cable")
+    by_specification = await service.search_candidates(None, characteristics={"cores": 2})
+    fresh = await service.get_fresh_product("TEST-CABLE-3X2-5")
 
-    assert refreshed.products_loaded == 5
-    assert refreshed.pages_loaded == 3
-    assert len(by_name.candidates) == 4
-    assert len(by_category.candidates) == 5
-    assert [item.article for item in by_specification.candidates] == ["DEMO-CABLE-AL-3X2-5"]
-
-
-async def test_unknown_sku_does_not_fall_through_to_text_search() -> None:
-    adapter = MockCatalogAdapter.from_file(dataset_path())
-    repository = MemoryCatalogRepository([
-        stored_product(CatalogProductUpsert(article="LOCAL-1", name="DEMO-UNKNOWN-404 compatible cable")),
-    ])
-    service = CatalogService(repository, adapter=adapter)
-
-    result = await service.search_candidates("DEMO-UNKNOWN-404")
-
-    assert result.match_type == "none"
-    assert result.candidates == []
-
-
-async def test_fresh_details_return_only_adapter_values_for_stocks_and_certificates() -> None:
-    repository = MemoryCatalogRepository()
-    service = CatalogService(repository, adapter=MockCatalogAdapter.from_file(dataset_path()))
-
-    certified = await service.get_fresh_product("DEMO-CABLE-VVG-3X2-5")
-    without_certificate = await service.get_fresh_product("DEMO-CABLE-VVG-3X1-5")
-    unknown_availability = await service.get_fresh_product("DEMO-CABLE-AL-3X2-5")
-
-    assert certified.certificates == [{"type": "соответствие", "number": "DEMO-CERT-001"}]
-    assert certified.cached_stock_by_location == {"Алматы": 120, "Астана": 45}
-    assert without_certificate.certificates == []
-    assert unknown_availability.cached_price is None
-    assert unknown_availability.cached_stock_by_location is None
-    assert unknown_availability.cached_available is None
-
-
-async def test_mock_adapter_rejects_malformed_data(tmp_path: Path) -> None:
-    malformed = tmp_path / "bad.json"
-    malformed.write_text('{"products": [{"article": "missing-name"}]}', encoding="utf-8")
-
-    with pytest.raises(CatalogAdapterMalformedResponseError):
-        MockCatalogAdapter.from_file(malformed)
+    assert refreshed.products_loaded == 3
+    assert len(by_name.candidates) == 3
+    assert [item.article for item in by_specification.candidates] == ["TEST-CABLE-2X2-5"]
+    assert fresh.certificates == [{"number": "CERT-1"}]
 
 
 class FakeEktClient:

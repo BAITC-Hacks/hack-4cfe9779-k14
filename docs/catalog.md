@@ -1,12 +1,11 @@
 # Каталог, adapter и поиск
 
-`CatalogService` — единственная точка доступа dialogue layer к каталогу. Он получает данные через `CatalogAdapter`, поэтому локальный PostgreSQL-индекс, mock dataset и EKT transport не проникают в чат или маршруты.
+`CatalogService` — единственная точка доступа dialogue layer к каталогу. Он получает данные через `CatalogAdapter`, поэтому локальный PostgreSQL-индекс, EKT transport не проникают в чат или маршруты.
 
 ## Adapter
 
 `CatalogAdapter` поддерживает точный артикул, свежую карточку по partner id и постраничную выгрузку. Реализации:
 
-- `MockCatalogAdapter` читает только [`testdata/mock_catalog.json`](../testdata/mock_catalog.json); это default для локального запуска;
 - `EktCatalogAdapter` оборачивает существующий `EktClient` и использует лишь документированные GET-пути. В приложении подключён `LiveEktResponseMapper`, основанный на полученных ответах API;
 - `UnavailableCatalogAdapter` возвращает безопасную нормализованную ошибку при отсутствии обязательной конфигурации EKT.
 
@@ -29,7 +28,7 @@
 
 ## Аналоги и замены
 
-Подбор замен находится в отдельном `AnalogService` поверх `CatalogService`. Он сначала получает свежие карточки, применяет fail-closed правила `CompatibilityRules` по категории и обязательным техническим параметрам, затем ранжирует только допущенные позиции. Сходство названия не может обойти compatibility filter. Каждый результат содержит структурированное объяснение совпадений, различий и неизвестных полей. Текущие правила кабелей — только demo для mock dataset; подробности и необходимый production-контракт описаны в [analog-replacements.md](analog-replacements.md).
+Подбор замен находится в отдельном `AnalogService` поверх `CatalogService`. Он сначала получает свежие карточки, применяет fail-closed правила `CompatibilityRules` по категории и обязательным техническим параметрам, затем ранжирует только допущенные позиции. Сходство названия не может обойти compatibility filter. Каждый результат содержит структурированное объяснение совпадений, различий и неизвестных полей. Пока партнёр не утвердил профиль категории, `UnavailableCompatibilityRules` не предлагает замены. Подробности и необходимый production-контракт описаны в [analog-replacements.md](analog-replacements.md).
 
 ## API
 

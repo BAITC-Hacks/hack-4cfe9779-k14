@@ -30,7 +30,7 @@ async def get_chat_service(session: AsyncSession = Depends(get_db), offers: Offe
         llm = UnavailableLLMClient()
     adapter = build_catalog_adapter()
     try:
-        catalog = CatalogService(CatalogRepository(session, source_origin="ekt/live" if get_settings().catalog_adapter_mode == "ekt" else "mock/demo"), adapter=adapter)
+        catalog = CatalogService(CatalogRepository(session, source_origin="ekt/live"), adapter=adapter)
         yield ChatService(
             repository=ChatRepository(session),
             catalog=catalog,

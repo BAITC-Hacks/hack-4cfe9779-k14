@@ -132,7 +132,7 @@ class Cart:
         )
 
 
-async def test_chat_catalog_offer_confirmation_journey_uses_mocked_llm_ekt_and_cart() -> None:
+async def test_chat_catalog_offer_confirmation_journey_uses_test_doubles() -> None:
     chat_repository = ChatRepository()
     catalog = Catalog()
     chat = ChatService(chat_repository, catalog, Llm())
@@ -146,7 +146,7 @@ async def test_chat_catalog_offer_confirmation_journey_uses_mocked_llm_ekt_and_c
         chat_repository.session_id,
         CreateOfferRequest(product_identifier="ekt-1", article="A-1", quantity=2),
     )
-    confirmation = await offers.confirm_offer(chat_repository.session_id, offer.offer_id, "demo-key-1")
+    confirmation = await offers.confirm_offer(chat_repository.session_id, offer.offer_id, "test-key-1")
 
     assert confirmation.outcome == "confirmed"
     assert confirmation.cart_url == "https://cart.example/current"

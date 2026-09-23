@@ -6,11 +6,7 @@ must never let a partner's JSON envelope cross into routes or services.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any, Protocol, Sequence
-
-from pydantic import ValidationError
+from typing import Protocol
 
 from app.integrations.ekt_client import (
     EktAuthenticationError,
@@ -23,7 +19,6 @@ from app.integrations.ekt_client import (
     EktResponseFormatError,
     EktTimeoutError,
 )
-from app.config.settings import get_settings
 from app.schemas.catalog import CatalogPage, CatalogProductUpsert
 
 
@@ -63,64 +58,6 @@ class CatalogAdapter(Protocol):
     async def get_products_page(self, page: int = 1, *, page_size: int = 50) -> CatalogPage: ...
 
     async def aclose(self) -> None: ...
-
-
-class MockCatalogAdapter:
-    """Read-only adapter over the explicit synthetic dataset used in development."""
-
-    def __init__(self, products: Sequence[CatalogProductUpsert]) -> None:
-        self._products = list(products)
-
-    @classmethod
-    def from_file(cls, path: Path) -> "MockCatalogAdapter":
-        try:
-            dataset = json.loads(path.read_text(encoding="utf-8"))
-            rows = dataset["products"]
-            if not isinstance(rows, list):
-                raise TypeError("products must be a list")
-            products = [cls._normalize_mock_row(row) for row in rows]
-        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValidationError) as exc:
-            raise CatalogAdapterMalformedResponseError("Mock catalog data is invalid") from exc
-        return cls(products)
-
-    @staticmethod
-    def _normalize_mock_row(row: Any) -> CatalogProductUpsert:
-        if not isinstance(row, dict):
-            raise TypeError("product row must be an object")
-        presence = {
-            field: field in row
-            for field in CatalogProductUpsert.model_fields
-            if field != "source_field_presence"
-        }
-        return CatalogProductUpsert.model_validate(row).model_copy(
-            update={"source_field_presence": presence}
-        )
-
-    async def get_product_by_article(self, article: str) -> CatalogProductUpsert:
-        normalized = article.strip().casefold()
-        if not normalized:
-            raise CatalogAdapterNotFoundError("Product article was not found")
-        for product in self._products:
-            if product.article.casefold() == normalized:
-                return product
-        raise CatalogAdapterNotFoundError("Product article was not found")
-
-    async def get_product_details(self, external_id: str) -> CatalogProductUpsert:
-        normalized = external_id.strip()
-        for product in self._products:
-            if product.external_id == normalized:
-                return product
-        raise CatalogAdapterNotFoundError("Product details were not found")
-
-    async def get_products_page(self, page: int = 1, *, page_size: int = 50) -> CatalogPage:
-        if page < 1 or page_size < 1:
-            raise ValueError("page and page_size must be greater than zero")
-        start = (page - 1) * page_size
-        products = self._products[start : start + page_size]
-        return CatalogPage(page=page, products=products, has_more=start + page_size < len(self._products))
-
-    async def aclose(self) -> None:
-        return None
 
 
 class EktCatalogAdapter:
@@ -194,7 +131,7 @@ class EktCatalogAdapter:
 
 
 class UnavailableCatalogAdapter:
-    """Explicit non-mock fallback while a production EKT mapper is unavailable."""
+    """Safe fallback while a production EKT mapper is unavailable."""
 
     def __init__(self, reason: str = "Catalog adapter is not configured") -> None:
         self._reason = reason
@@ -216,19 +153,9 @@ class UnavailableCatalogAdapter:
 
 
 def build_catalog_adapter() -> CatalogAdapter:
-    """Build the configured adapter without guessing an EKT response mapper."""
-    settings = get_settings()
-    if settings.catalog_adapter_mode == "mock":
-        path = (
-            Path(settings.catalog_mock_data_path)
-            if settings.catalog_mock_data_path
-            else Path(__file__).parents[2] / "testdata" / "mock_catalog.json"
-        )
-        return MockCatalogAdapter.from_file(path)
-    if settings.catalog_adapter_mode == "ekt":
-        from app.integrations.ekt_mapper import LiveEktResponseMapper
-        try:
-            return EktCatalogAdapter(EktClient(LiveEktResponseMapper()))
-        except EktConfigurationError:
-            return UnavailableCatalogAdapter("EKT credentials are not configured")
-    return UnavailableCatalogAdapter("CATALOG_ADAPTER_MODE must be mock or ekt")
+    """Use the observed EKT contract; no synthetic runtime fallback."""
+    from app.integrations.ekt_mapper import LiveEktResponseMapper
+    try:
+        return EktCatalogAdapter(EktClient(LiveEktResponseMapper()))
+    except EktConfigurationError:
+        return UnavailableCatalogAdapter("EKT credentials are not configured")

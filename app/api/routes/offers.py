@@ -6,7 +6,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.config.database import SessionLocal
-from app.config.settings import get_settings
 from app.integrations.catalog_adapter import build_catalog_adapter
 from app.integrations.cart_gateway import build_cart_gateway
 from app.repositories.catalog import CatalogRepository
@@ -25,7 +24,7 @@ async def get_offer_service() -> AsyncGenerator[OfferService, None]:
     adapter = build_catalog_adapter()
     try:
         async with SessionLocal() as offer_session, SessionLocal() as catalog_session:
-            catalog = CatalogService(CatalogRepository(catalog_session, source_origin="ekt/live" if get_settings().catalog_adapter_mode == "ekt" else "mock/demo"), adapter=adapter)
+            catalog = CatalogService(CatalogRepository(catalog_session, source_origin="ekt/live"), adapter=adapter)
             yield OfferService(OfferRepository(offer_session), CatalogCurrentProductProvider(catalog), build_cart_gateway())
     finally:
         await adapter.aclose()

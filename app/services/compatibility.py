@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.config.compatibility_rules import DEMO_COMPATIBILITY_PROFILES, DEMO_COMPATIBILITY_RULES_SOURCE
 from app.schemas.analogs import AnalogDifference, AnalogExplanation, AnalogMatch
 from app.schemas.catalog import FreshCatalogProduct
 
@@ -63,7 +62,7 @@ class ConfiguredCompatibilityRules:
                 return CompatibilityAssessment(False, explanation)
             explanation.matches.append(AnalogMatch(field=f"characteristics.{field}", value=source_value))
 
-        # Brand is not an approved compatibility filter in demo rules, but its
+        # Brand is not a mandatory compatibility filter by default, but its
         # known difference is useful to expose in the explanation.
         if source.brand is not None and candidate.brand is not None and source.brand != candidate.brand:
             explanation.differences.append(
@@ -72,6 +71,6 @@ class ConfiguredCompatibilityRules:
         return CompatibilityAssessment(True, explanation)
 
 
-class DemoCompatibilityRules(ConfiguredCompatibilityRules):
+class UnavailableCompatibilityRules(ConfiguredCompatibilityRules):
     def __init__(self) -> None:
-        super().__init__(DEMO_COMPATIBILITY_PROFILES, DEMO_COMPATIBILITY_RULES_SOURCE)
+        super().__init__({}, "unavailable/no approved compatibility rules")

@@ -18,7 +18,7 @@
 6. `ChatService` вызывает `CatalogService` для поиска и фактов. Точный артикул и полнотекстовый поиск выполняются сервером, а не моделью. Несколько кандидатов дают clarification вместо автоматического выбора.
 7. Для аналога `ChatService` вызывает `AnalogService`, который получает свежие карточки через `CatalogService` и применяет обязательные compatibility filters до ranking. При нулевой доступности ответ может включать лишь прошедшие эти filters и подтверждённо доступные позиции; похожее название не достаточно. См. [analog-replacements.md](analog-replacements.md).
 7. Для наличия и цены сервер вызывает `get_current_availability`; для характеристик и сертификатов — `get_fresh_product`. Кэш каталога не выдаётся как свежий факт.
-8. Для условий покупки сервис читает `PurchaseConditionsProvider`, а не prompt LLM. Demo-provider явно сообщает, что реальные условия ekt.kz не предоставлены.
+8. Для условий покупки сервис читает `PurchaseConditionsProvider`, а не prompt LLM. Default provider явно сообщает, что утверждённые условия ekt.kz недоступны.
 9. Сервис формирует grounded ответ, сохраняет выбранный контекст в metadata assistant-сообщения и возвращает его клиенту.
 
 `add_to_cart_request` — только классификация намерения. Если сервер может получить свежую карточку, external product id и количество, `ChatService` передаёт их узкому `OfferProposalCreator.create_offer` и возвращает `pending_offer` в `ChatReply`. Это создаёт только ожидающее подтверждения предложение; `ChatService` и `LLMClient` не получают `CartGateway` и не имеют метода confirmation. Товар не добавляется, пока browser не вызовет отдельный endpoint с конкретным `offer_id` и `Idempotency-Key`.

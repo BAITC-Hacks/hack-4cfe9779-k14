@@ -14,7 +14,6 @@ COPY alembic ./alembic
 COPY app ./app
 COPY src ./src
 ENV PYTHONPATH=/app/src
-COPY testdata ./testdata
 
 EXPOSE 8000
 CMD ["sh", "-c", "alembic upgrade head && python -m app.catalog_sync && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

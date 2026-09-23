@@ -1,51 +1,86 @@
-# EKT Chat API
+# Chat Service Backend
 
-Сервер чата на Python, FastAPI и Pydantic. Внешний API ekt.kz изолирован в HTTP-адаптере на `httpx` (`app/integrations/ekt_api.py`). Репозиторий каталога использует PostgreSQL (`app/catalog.py`): обычные столбцы для основных данных, `jsonb` для характеристик и GIN полнотекстовый индекс.
+Базовый backend чат-сервиса на Python, FastAPI, Pydantic, PostgreSQL, SQLAlchemy и Alembic. В этой версии нет интеграций с ekt.kz, LLM и обработки файлов.
 
-Состояние предложений корзины, метаданные вложений и ключи идемпотентности чата пока хранятся в памяти процесса. Пользователь просил отложить перенос именно этого состояния в БД; PostgreSQL подключается для каталога товаров. Каталог заполняется из внешнего API синхронизатором, который нужно связать с адаптером.
+## Архитектура
 
-## Запуск
+- `app/api/routes` — HTTP endpoints.
+- `app/schemas` — Pydantic-схемы запросов и ответов.
+- `app/models` — SQLAlchemy-модели.
+- `app/repositories` — доступ к данным.
+- `app/services` — ошибки и прикладная логика.
+- `app/integrations` — место для будущих внешних интеграций.
+- `app/config` — настройки и подключение к PostgreSQL.
+- `alembic` — миграции схемы.
+
+Каталог хранит характеристики в PostgreSQL `JSONB`, имеет уникальный индексированный артикул и полнотекстовый `tsvector` с GIN-индексом. Триггер PostgreSQL обновляет поисковый вектор при изменении товара. Временные предложения и ключи идемпотентности имеют `created_at`, `expires_at` и индексы истечения срока для последующей очистки.
+
+## Запуск локально
+
+Скопируйте пример настроек и при необходимости измените значения:
+
+```bash
+cp .env.example .env
+```
+
+Запустите PostgreSQL локально, затем установите зависимости и примените миграции:
 
 ```bash
 python -m venv .venv
-. .venv/bin/activate
+source .venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Swagger UI: `http://127.0.0.1:8000/docs`.
+Swagger UI: <http://127.0.0.1:8000/docs>; проверка состояния: <http://127.0.0.1:8000/health>.
 
-Для локальной разработки каждый запрос чата требует заголовок `X-Chat-Session`: случайная строка длиной 16–128 символов из букв, цифр, `_` или `-`. В рабочем сайте замените `get_session` на middleware/dependency, который берёт сессию из доверенной авторизации сайта; не доверяйте идентификатору из тела запроса.
+## Docker Compose
 
-## Конфигурация внешнего API и PostgreSQL
+Одной командой запускаются API и PostgreSQL. Compose автоматически применяет миграции перед запуском API:
 
-Укажите `EKT_API_BASE_URL` (по умолчанию `https://ekt.kz/api/`), `EKT_API_USERNAME` и `EKT_API_PASSWORD` в окружении сервера или менеджере секретов. Basic Auth не передаётся браузеру и не должен попадать в логи или репозиторий. `EktApiClient` предоставляет `list_products(page=...)` и `get_product(product_id)`, сам формирует `/products?page=...` и `/products/detail?id=...`, нормализует распространённые JSON-конверты и преобразует ошибки HTTP/сети в `EktApiUnavailable`.
-
-Поскольку точный формат ответов, имена полей и пределы API пока не подтверждены, преобразование ответа централизовано в `EktApiClient._normalize_product` и требует сверки с реальным API партнёра. Не используйте неподтверждённые поля как достоверные значения наличия/цены. Клиент поддерживает async context manager:
-
-```python
-async with EktApiClient() as ekt:
-    products = await ekt.list_products(page=1)
-    product = await ekt.get_product("partner-product-id")
+```bash
+cp .env.example .env
+docker compose up --build
 ```
 
-Для каталога задайте `DATABASE_URL` с PostgreSQL DSN, например `postgresql://user:password@localhost:5432/ekt`. `ProductCatalog.connect(DATABASE_URL)` создаёт пул подключений. Вызов `await catalog.initialize()` создаёт таблицу и индексы для локального MVP; для production схему следует перенести в миграции. `upsert_products`, `get_product` и `search(query, category=..., attributes=...)` дают API для синхронизации и поиска. Детали схемы описаны в `docs/catalog.md`.
+Остановка контейнеров:
 
-## API
+```bash
+docker compose down
+```
 
-- `GET /health` — доступность.
-- `POST /api/chat/attachments` — загрузить один PDF, DOC/DOCX, XLS/XLSX или JPEG до 10 МБ. Ответ содержит `attachment_id`.
-- `POST /api/chat/messages` — отправить `message` и необязательный список `attachment_ids` (до пяти). Вложения доступны только загрузившей их сессии. Ответ содержит текст, карточки товаров и необязательное предложение подтверждения.
-- `POST /api/chat/confirm` — подтвердить `proposal_id`; требует `Idempotency-Key`. Успех возвращается только после результата адаптера корзины.
+Чтобы также удалить данные PostgreSQL, используйте `docker compose down -v`.
 
-## Подключение Python-кода
+## Миграции
 
-Замените `NotConfiguredProcessor` реализацией `ChatProcessor.respond(message, attachment_paths) -> ChatResponse`. Внутри можно вызвать существующий поисковый код, извлечение содержимого файлов и модель. Структура `ChatResponse` описана Pydantic-моделями рядом с endpoints. При создании `response.proposal` сервер сохраняет точный состав и количество, связанные с сессией, и принимает подтверждение только для этого предложения в течение пяти минут.
+```bash
+alembic upgrade head
+alembic revision --autogenerate -m "describe schema change"
+alembic downgrade -1
+```
 
-Замените `NotConfiguredCart` реализацией `CartAdapter.add_confirmed(lines, session, idempotency_key) -> CartResult`. Адаптер должен повторно проверить остатки и права сессии, записать корзину с идемпотентностью и вернуть фактические добавленные позиции и URL актуальной корзины. Пока адаптер не подключён, подтверждение вернёт `503` и не заявит об успешном добавлении.
+Для миграций локально необходим доступный PostgreSQL. `DATABASE_URL` задаётся в `.env`; не коммитьте `.env` и реальные пароли.
 
-Загрузки сохраняются во временной директории ОС с правами доступа только владельцу; максимальный размер и MIME/расширение проверяются. API отдаёт обработчику путь к файлу, содержимое не извлекается автоматически. Файлы и их содержимое следует обрабатывать как данные, а не как инструкции для модели.
+## Тесты
 
-## Ограничения текущего MVP
+```bash
+pytest
+```
 
-Предложения, вложения чата и идемпотентность теряются при перезапуске и не разделяются между несколькими процессами; состояние чата пока намеренно не переносилось в PostgreSQL. SQL используется для товарного каталога. Сессия через заголовок подходит только для разработки. Реальное соединение каталога с API чата, синхронизация внешнего каталога и корзина сайта ещё требуют интеграции.
+Тесты health endpoint и моделей не требуют работающего PostgreSQL. Интеграционный health-check можно выполнить при запущенной базе через `curl http://localhost:8000/health`.
+
+## Переменные окружения
+
+| Переменная | Назначение | По умолчанию |
+| --- | --- | --- |
+| `APP_NAME` | Имя API | `Chat Service API` |
+| `APP_ENV` | Окружение | `development` |
+| `LOG_LEVEL` | Уровень логирования | `INFO` |
+| `DATABASE_URL` | SQLAlchemy DSN | Локальный PostgreSQL `chat` |
+| `POSTGRES_DB` | Имя базы в Compose | `chat` |
+| `POSTGRES_USER` | Пользователь в Compose | `chat` |
+| `POSTGRES_PASSWORD` | Пароль в Compose | обязателен в `.env` |
+| `API_PORT` | Порт API на хосте | `8000` |
+
+Compose defaults предназначены для локальной разработки. Для общего/боевого окружения задайте собственный пароль через некоммитящийся `.env` или секреты платформы.

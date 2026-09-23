@@ -158,3 +158,21 @@ async def test_extracted_attachment_is_used_for_catalog_and_current_ekt_check(
     assert reply.attachment_items[0].current_data["current"] is True
     assert catalog.current_articles == ["A-1"]
     assert "распознано позиций: 1" in reply.assistant_message.content
+
+
+async def test_chat_explains_ocr_failure_without_claiming_a_result() -> None:
+    repository = FakeChatRepository()
+    attachment_id = uuid4()
+    record = SimpleNamespace(
+        id=attachment_id, session_id=repository.session_id, filename="scan.png", mime_type="image/png",
+        document_type="image", extracted_text="", tables=[], warnings=["ocr_failed", "empty_document"], metadata_json={},
+    )
+    service = ChatService(repository, FakeCatalogService(), MockLLM(), attachments=FakeAttachmentRepository([record]))
+
+    reply = await service.send_message(
+        repository.session_id,
+        ChatMessageCreate(content="Проверьте скан", attachment_ids=[attachment_id]),
+    )
+
+    assert "OCR не смог" in reply.assistant_message.content
+    assert reply.attachment_items == []

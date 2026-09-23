@@ -35,10 +35,12 @@ class TestMapper:
         return EktProduct.model_validate(payload)
 
 
-def setup_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def setup_settings(monkeypatch: pytest.MonkeyPatch, *, retries: int = 1) -> None:
     monkeypatch.setenv("EKT_API_USERNAME", "mock-user")
     monkeypatch.setenv("EKT_API_PASSWORD", "mock-password")
     monkeypatch.setenv("EKT_API_BASE_URL", "https://partner.invalid/api/")
+    monkeypatch.setenv("EKT_READ_RETRY_COUNT", str(retries))
+    monkeypatch.setenv("EKT_RETRY_BACKOFF_SECONDS", "0")
     get_settings.cache_clear()
 
 
@@ -154,10 +156,10 @@ async def test_unexpected_external_shape_is_hidden_by_mapper_boundary(monkeypatc
             await client.get_products_page()
 
 
-async def test_timeout_is_not_retried_and_credentials_are_not_logged(
+async def test_timeout_retries_only_controlled_read_attempts_and_credentials_are_not_logged(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    setup_settings(monkeypatch)
+    setup_settings(monkeypatch, retries=1)
     count = 0
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -170,9 +172,25 @@ async def test_timeout_is_not_retried_and_credentials_are_not_logged(
         with pytest.raises(EktTimeoutError):
             await client.get_products_page()
 
-    assert count == 1
+    assert count == 2
     assert "mock-user" not in caplog.text
     assert "mock-password" not in caplog.text
+
+
+async def test_server_error_is_retried_once_then_returns_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    setup_settings(monkeypatch, retries=1)
+    count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal count
+        count += 1
+        return httpx.Response(503) if count == 1 else httpx.Response(200, json=[product()])
+
+    async with EktClient(TestMapper(), transport=httpx.MockTransport(handler)) as client:
+        products = await client.get_products_page()
+
+    assert count == 2
+    assert products[0].article == "A-1"
 
 
 async def test_connection_error_is_classified(monkeypatch: pytest.MonkeyPatch) -> None:

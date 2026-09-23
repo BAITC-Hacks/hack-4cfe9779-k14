@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     ekt_api_base_url: str = "https://ekt.kz/api/"
     ekt_api_username: str | None = None
     ekt_api_password: SecretStr | None = None
+    ekt_read_retry_count: int = Field(default=1, ge=0, le=3)
+    ekt_retry_backoff_seconds: float = Field(default=0.05, ge=0, le=5)
+    catalog_adapter_mode: str = "mock"
+    catalog_mock_data_path: str | None = None
     llm_api_url: str | None = None
     llm_api_key: SecretStr | None = None
     llm_model: str = ""

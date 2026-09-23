@@ -6,6 +6,7 @@ JSON schema is not documented, so callers must provide an explicit mapper.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from decimal import Decimal
 from typing import Any, Protocol
@@ -85,6 +86,12 @@ class EktProduct(BaseModel):
     price: Decimal | None = None
     stock_by_location: dict[str, int] | None = None
     attributes: dict[str, Any] = Field(default_factory=dict)
+    description: str | None = None
+    brand: str | None = None
+    category: str | None = None
+    certificates: list[dict[str, Any]] | None = None
+    source_fields: dict[str, Any] | None = None
+    source_field_presence: dict[str, bool] = Field(default_factory=dict)
 
 
 class EktPriceCheck(BaseModel):
@@ -116,9 +123,8 @@ class EktResponseMapper(Protocol):
 class EktClient:
     """Async `httpx` client with server-only Basic Auth and safe GET operations.
 
-    No retries are performed. This avoids duplicate operations by default and
-    is safe for all currently implemented reads. Add retries only to documented
-    idempotent requests after partner limits/semantics are confirmed.
+    Retries are restricted to the documented GET reads and only for timeout,
+    connection, and 5xx failures. Cart writes stay outside this client.
     """
 
     def __init__(
@@ -242,17 +248,32 @@ class EktClient:
             raise EktResponseFormatError("ekt.kz product detail does not match the requested catalog item")
 
     async def _get_json(self, operation: str, path: str, *, params: dict[str, Any]) -> Any:
-        try:
-            response = await self._client.get(path, params=params)
-        except httpx.TimeoutException as exc:
-            self._log_failure("timeout", operation=operation, error_type=type(exc).__name__)
-            raise EktTimeoutError("ekt.kz request timed out") from None
-        except httpx.ConnectError as exc:
-            self._log_failure("connection_error", operation=operation, error_type=type(exc).__name__)
-            raise EktConnectionError("Could not connect to ekt.kz") from None
-        except httpx.RequestError as exc:
-            self._log_failure("connection_error", operation=operation, error_type=type(exc).__name__)
-            raise EktConnectionError("ekt.kz request failed") from None
+        settings = get_settings()
+        attempts = settings.ekt_read_retry_count + 1
+        response: httpx.Response | None = None
+        for attempt in range(attempts):
+            try:
+                response = await self._client.get(path, params=params)
+            except httpx.TimeoutException as exc:
+                if attempt + 1 < attempts:
+                    await self._wait_to_retry(settings.ekt_retry_backoff_seconds, attempt)
+                    continue
+                self._log_failure("timeout", operation=operation, error_type=type(exc).__name__)
+                raise EktTimeoutError("ekt.kz request timed out") from None
+            except httpx.ConnectError as exc:
+                if attempt + 1 < attempts:
+                    await self._wait_to_retry(settings.ekt_retry_backoff_seconds, attempt)
+                    continue
+                self._log_failure("connection_error", operation=operation, error_type=type(exc).__name__)
+                raise EktConnectionError("Could not connect to ekt.kz") from None
+            except httpx.RequestError as exc:
+                self._log_failure("connection_error", operation=operation, error_type=type(exc).__name__)
+                raise EktConnectionError("ekt.kz request failed") from None
+            if response.status_code < 500 or attempt + 1 == attempts:
+                break
+            await self._wait_to_retry(settings.ekt_retry_backoff_seconds, attempt)
+
+        assert response is not None
 
         if 400 <= response.status_code < 500:
             self._log_failure("http_client_error", operation=operation, status_code=response.status_code)
@@ -273,6 +294,10 @@ class EktClient:
         except ValueError:
             self._log_failure("invalid_json", operation=operation, status_code=response.status_code)
             raise EktInvalidJsonError("ekt.kz returned invalid JSON") from None
+
+    @staticmethod
+    async def _wait_to_retry(backoff_seconds: float, attempt: int) -> None:
+        await asyncio.sleep(backoff_seconds * (2 ** attempt))
 
     @staticmethod
     def _log_failure(event: str, *, operation: str, status_code: int | None = None, error_type: str | None = None) -> None:

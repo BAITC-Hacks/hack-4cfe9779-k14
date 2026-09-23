@@ -22,6 +22,9 @@ class CatalogProductUpsert(BaseModel):
     certificates: list[dict[str, Any]] | None = None
     # Additional upstream fields after adapter normalization, retained verbatim.
     source_fields: dict[str, Any] | None = None
+    # Records whether a source explicitly supplied an internal field. It keeps
+    # an omitted field distinct from an explicitly supplied null or empty value.
+    source_field_presence: dict[str, bool] = Field(default_factory=dict)
 
 
 class CatalogCandidate(BaseModel):
@@ -41,6 +44,7 @@ class CatalogCandidate(BaseModel):
     cached_available: bool | None
     certificates: list[dict[str, Any]] | None
     source_fields: dict[str, Any] | None
+    source_field_presence: dict[str, bool] = Field(default_factory=dict)
 
 
 class CatalogSearchResponse(BaseModel):
@@ -55,3 +59,20 @@ class CurrentAvailability(BaseModel):
     available: bool | None
     current: bool
     reason: str | None = None
+
+
+class CatalogPage(BaseModel):
+    page: int = Field(ge=1)
+    products: list[CatalogProductUpsert]
+    has_more: bool
+
+
+class CatalogIndexRefresh(BaseModel):
+    pages_loaded: int
+    products_loaded: int
+
+
+class FreshCatalogProduct(CatalogProductUpsert):
+    """A directly refreshed adapter response, never a local-cache fallback."""
+
+    fresh: bool = True

@@ -120,6 +120,10 @@ pytest
 | `EKT_API_BASE_URL` | Базовый URL API ekt.kz | `https://ekt.kz/api/` |
 | `EKT_API_USERNAME` | Basic Auth логин, только сервер | не задан |
 | `EKT_API_PASSWORD` | Basic Auth пароль, только сервер | не задан |
+| `EKT_READ_RETRY_COUNT` | Число повторов безопасных EKT GET | `1` |
+| `EKT_RETRY_BACKOFF_SECONDS` | Базовая задержка между GET retry | `0.05` |
+| `CATALOG_ADAPTER_MODE` | Источник каталога: `mock` или `ekt` | `mock` |
+| `CATALOG_MOCK_DATA_PATH` | Необязательный путь к demo JSON | встроенный `testdata/mock_catalog.json` |
 | `LLM_API_URL` | URL OpenAI-compatible LLM endpoint, только сервер | не задан |
 | `LLM_API_KEY` | API key LLM, только сервер | не задан |
 | `LLM_MODEL` | Имя модели | не задан |
@@ -141,11 +145,11 @@ Compose defaults предназначены для локальной разра
 
 ## Каталог и поиск
 
-`CatalogService` использует локальный PostgreSQL-каталог и скрывает SQLAlchemy от API и будущего чата. Точный поиск по уникальному артикулу имеет приоритет. Если точного совпадения нет, применяется полнотекстовый PostgreSQL-поиск по названию, описанию, бренду и характеристикам JSONB. Фильтр `characteristics` работает через JSONB containment; отдельный Elasticsearch/OpenSearch не используется.
+`CatalogService` использует один `CatalogAdapter` и скрывает от API/чата как SQLAlchemy, так и источник данных. Локальный PostgreSQL — заменяемый поисковый индекс, а `MockCatalogAdapter` — локальный default. После миграций Compose синхронизирует demo-набор в индекс. Точный SKU имеет приоритет; неизвестный SKU не превращается в похожий товар. Обычный текст ищется по названию, категории, описанию, бренду, характеристикам и релевантным source fields через PostgreSQL FTS, а фильтр `characteristics` работает через JSONB containment.
 
-Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Перед предложением вызывайте `CatalogService.get_current_availability(article)`: он получает текущую карточку через `EktClient`. При недоступности ekt.kz сервис возвращает `current=false` и не подставляет локальную цену или остаток. Полный контракт и тестовые endpoints: [docs/catalog.md](docs/catalog.md).
+Локальные `cached_price`, `cached_stock_by_location` и `cached_available` не подтверждают актуальное состояние. Для изменяемых сведений используйте `CatalogService.get_fresh_product(article)` или `get_current_availability(article)`: они обращаются к adapter и не подставляют локальный cache при ошибке источника. Полный контракт и endpoints: [docs/catalog.md](docs/catalog.md).
 
-Внутренняя модель включает артикул, название, категорию, характеристики, кэшированные остатки по складам, цену, доступность, сертификаты и `source_fields` для дополнительных нормализованных полей. `null` означает «неизвестно / не передано», а пустой массив сертификатов — подтверждённое отсутствие сертификатов. [Синтетический demo-каталог](docs/mock-data.md) не загружается и не выдаётся как актуальный источник данных.
+Внутренняя модель включает артикул, название, категорию, характеристики, кэшированные остатки по складам, цену, доступность, сертификаты и `source_fields` для дополнительных нормализованных полей. `source_field_presence` различает отсутствие ключа в источнике и переданное значение `null`/`0`/`[]`. [Синтетический demo-каталог](docs/mock-data.md) используется только mock adapter'ом и не является актуальным EKT-источником.
 
 ## Чат и LLM
 

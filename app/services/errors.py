@@ -33,3 +33,18 @@ class UnsupportedAttachment(ApplicationError):
 class AttachmentProcessingFailed(ApplicationError):
     code = "attachment_processing_failed"
     status_code = 422
+
+
+class CatalogUnavailable(ApplicationError):
+    code = "catalog_unavailable"
+    status_code = 503
+
+
+class CatalogAuthenticationFailed(ApplicationError):
+    code = "catalog_authentication_failed"
+    status_code = 503
+
+
+class CatalogDataInvalid(ApplicationError):
+    code = "catalog_data_invalid"
+    status_code = 502

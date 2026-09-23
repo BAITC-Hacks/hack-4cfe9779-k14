@@ -5,15 +5,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_db
+from app.integrations.catalog_adapter import build_catalog_adapter
 from app.repositories.catalog import CatalogRepository
-from app.schemas.catalog import CatalogCandidate, CatalogProductUpsert, CatalogSearchResponse, CurrentAvailability
+from app.schemas.catalog import (
+    CatalogCandidate,
+    CatalogIndexRefresh,
+    CatalogProductUpsert,
+    CatalogSearchResponse,
+    CurrentAvailability,
+    FreshCatalogProduct,
+)
 from app.services.catalog import CatalogService
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 
 def get_catalog_service(session: AsyncSession = Depends(get_db)) -> CatalogService:
-    return CatalogService(CatalogRepository(session))
+    return CatalogService(CatalogRepository(session), adapter=build_catalog_adapter())
 
 
 Catalog = Annotated[CatalogService, Depends(get_catalog_service)]
@@ -38,6 +46,20 @@ async def search_products(
 @router.get("/products/{article}/current", response_model=CurrentAvailability)
 async def current_product_availability(article: str, service: Catalog) -> CurrentAvailability:
     return await service.get_current_availability(article)
+
+
+@router.get("/products/{article}/fresh", response_model=FreshCatalogProduct)
+async def fresh_product_details(article: str, service: Catalog) -> FreshCatalogProduct:
+    return await service.get_fresh_product(article)
+
+
+@router.post("/index/refresh", response_model=CatalogIndexRefresh)
+async def refresh_catalog_index(
+    service: Catalog,
+    max_pages: int = Query(default=1000, ge=1, le=1000),
+    page_size: int = Query(default=50, ge=1, le=1000),
+) -> CatalogIndexRefresh:
+    return await service.refresh_index(max_pages=max_pages, page_size=page_size)
 
 
 def _parse_characteristics(value: str | None) -> dict[str, Any] | None:

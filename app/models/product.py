@@ -33,6 +33,7 @@ class Product(TimestampMixin, Base):
     # Preserve normalized-but-unmodelled source fields without making claims
     # about their meaning. NULL means no source payload was supplied.
     source_fields: Mapped[dict | None] = mapped_column(JSONB)
+    source_field_presence: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}", nullable=False)
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
         server_default=text("''::tsvector"),

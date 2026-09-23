@@ -4,8 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.integrations.ekt_client import EktConnectionError, EktProduct
-from app.schemas.catalog import CatalogProductUpsert
+from app.integrations.catalog_adapter import CatalogAdapterUnavailableError
+from app.schemas.catalog import CatalogPage, CatalogProductUpsert
 from app.services.catalog import CatalogService
 
 pytestmark = pytest.mark.asyncio
@@ -39,17 +39,26 @@ class FakeCatalogRepository:
         return matches[:limit]
 
 
-class CurrentEkt:
-    async def get_current_product_by_article(self, article):
-        return EktProduct(
-            id="remote-A-1", article=article, name="Cable", price=Decimal("105.50"),
-            stock_by_location={"almaty": 3},
+class CurrentAdapter:
+    async def get_product_by_article(self, article):
+        return CatalogProductUpsert(
+            article=article, external_id="remote-A-1", name="Cable", cached_price=Decimal("105.50"),
+            cached_stock_by_location={"almaty": 3}, cached_available=True, certificates=[],
         )
 
+    async def get_product_details(self, external_id):
+        raise AssertionError(f"unexpected detail request: {external_id}")
 
-class UnavailableEkt:
-    async def get_current_product_by_article(self, article):
-        raise EktConnectionError("unavailable")
+    async def get_products_page(self, page=1, *, page_size=50):
+        raise AssertionError(f"unexpected page request: {page}/{page_size}")
+
+    async def aclose(self):
+        return None
+
+
+class UnavailableAdapter(CurrentAdapter):
+    async def get_product_by_article(self, article):
+        raise CatalogAdapterUnavailableError("unavailable")
 
 
 async def test_exact_article_has_priority_over_text_search() -> None:
@@ -94,7 +103,7 @@ async def test_save_product_returns_catalog_candidate() -> None:
 
 
 async def test_current_price_and_stock_come_from_ekt_not_local_cache() -> None:
-    service = CatalogService(FakeCatalogRepository([]), ekt_client=CurrentEkt())
+    service = CatalogService(FakeCatalogRepository([]), adapter=CurrentAdapter())
 
     result = await service.get_current_availability("A-1")
 
@@ -105,11 +114,11 @@ async def test_current_price_and_stock_come_from_ekt_not_local_cache() -> None:
 
 
 async def test_ekt_unavailable_never_returns_cached_price_or_stock_as_current() -> None:
-    service = CatalogService(FakeCatalogRepository([]), ekt_client=UnavailableEkt())
+    service = CatalogService(FakeCatalogRepository([]), adapter=UnavailableAdapter())
 
     result = await service.get_current_availability("A-1")
 
     assert result.current is False
-    assert result.reason == "ekt_unavailable"
+    assert result.reason == "catalog_unavailable"
     assert result.price is None
     assert result.stock_by_location is None

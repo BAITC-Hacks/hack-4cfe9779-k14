@@ -1,52 +1,36 @@
-# Локальный каталог и поиск
+# Каталог, adapter и поиск
 
-Локальный PostgreSQL-каталог служит для быстрого выбора кандидатов. Он не является источником подтверждённых цены, остатка или доступности для предложения пользователю.
+`CatalogService` — единственная точка доступа dialogue layer к каталогу. Он получает данные через `CatalogAdapter`, поэтому локальный PostgreSQL-индекс, mock dataset и будущий EKT transport не проникают в чат или маршруты.
 
-## Модель и индексы
+## Adapter
 
-`products` содержит обычные колонки `article`, `external_id`, `name`, `description`, `brand` и кэшированные поля `cached_price`, `cached_stock_by_location`, `cached_available`. Разнородные технические параметры находятся в `characteristics JSONB`.
+`CatalogAdapter` поддерживает точный артикул, свежую карточку по partner id и постраничную выгрузку. Реализации:
 
-В миграции `20260923_0002_catalog_fields` добавлены бренд и партнёрский идентификатор. Кэшированные поля названы намеренно: они пригодны для синхронизации и отображения кандидата, но не подтверждают состояние товара.
+- `MockCatalogAdapter` читает только [`testdata/mock_catalog.json`](../testdata/mock_catalog.json); это default для локального запуска;
+- `EktCatalogAdapter` оборачивает существующий `EktClient` и использует лишь документированные GET-пути. Его можно создать только с подтверждённым `EktResponseMapper`;
+- `UnavailableCatalogAdapter` возвращает безопасную нормализованную ошибку при `CATALOG_ADAPTER_MODE=ekt`, пока mapper не реализован.
 
-Индексы PostgreSQL:
+`python -m app.catalog_sync` или `POST /api/catalog/index/refresh` обновляет индекс страницами. Docker Compose выполняет синхронизацию после миграций, поэтому demo-поиск готов сразу после старта.
 
-- уникальный B-tree по `article` для отдельного точного поиска;
-- уникальный B-tree по `external_id`, когда он получен от партнёра;
-- GIN по `search_vector` для полнотекстового поиска;
-- GIN `jsonb_path_ops` по `characteristics` для containment-фильтров JSONB;
-- B-tree по `brand`.
+## Модель и неизвестные значения
 
-Триггер `products_search_vector_update` обновляет `search_vector` при вставке и изменении. Вектор содержит артикул, название и бренд с весом A, описание с весом B и JSONB-характеристики с весом C. Конфигурация `simple` избегает зависимости от одного словаря языка.
+`products` хранит артикул, partner id, название, бренд, категорию, характеристики, кэшированные цену/остатки/доступность, сертификаты и `source_fields`. `source_field_presence` отдельно отмечает, был ли ключ в ответе источника: это отличает omission от `null`, `0`, `{}` и `[]`.
 
-## Алгоритм поиска
+Кэшированные поля применяются только для поиска и отображения кандидатов. `GET /api/catalog/products/{article}/fresh` всегда вызывает adapter и возвращает его нормализованную карточку; `GET /api/catalog/products/{article}/current` не подставляет значения из индекса при ошибке источника.
 
-`CatalogService.search_candidates` выполняет шаги:
+## Поиск
 
-1. Нормализует поисковую строку.
-2. При непустой строке ищет точное равенство `article`. Если товар найден и удовлетворяет характеристикам, возвращает только его с `match_type=exact_article`.
-3. Иначе выполняет PostgreSQL `plainto_tsquery('simple', query)` по `search_vector`, сортируя кандидаты через `ts_rank_cd`.
-4. Если передан JSON-объект характеристик, применяет JSONB containment `characteristics @> filter`.
+1. Точный локальный `article` имеет приоритет.
+2. SKU-подобный запрос, которого нет в индексе, проверяется adapter'ом строго по артикулу. Неизвестный SKU возвращает пустой результат, а не fuzzy-совпадение.
+3. Обычный текст ищется PostgreSQL `plainto_tsquery('simple', ...)` по названию, артикулу, бренду, категории, описанию, характеристикам и `source_fields`.
+4. `characteristics` применяются через JSONB containment. Пустой текст разрешён только вместе с этим фильтром.
 
-Пустой текст допускается только вместе с фильтром характеристик; тогда кандидаты выбираются по JSONB и сортируются по названию.
+Индексный backend находится за `CatalogRepository`; его можно заменить без изменения `CatalogService` или dialogue layer.
 
-## API для проверки
+## API
 
-- `POST /api/catalog/products` — сохранение или обновление товара по артикулу.
-- `GET /api/catalog/search?q=...&characteristics={...}&limit=20` — кандидаты. `characteristics` должен быть JSON-объектом в query parameter.
-- `GET /api/catalog/products/{article}/current` — результат проверки текущих данных. В базовой HTTP-конфигурации EKT-клиент ещё не связывается автоматически, поэтому ответ помечается `current=false`; чат должен получать `CatalogService` с настроенным `EktClient` и реальным `EktResponseMapper`.
-
-## Проверка перед предложением
-
-Перед созданием предложения вызовите `CatalogService.get_current_availability(article)`. Сервис всегда вызывает `EktClient.get_current_product_by_article`, затем берёт из ответа EKT цену, остатки и вычисляет доступность по сумме остатков. При timeout, сетевой ошибке или другой ошибке EKT он возвращает:
-
-```json
-{
-  "current": false,
-  "price": null,
-  "stock_by_location": null,
-  "available": null,
-  "reason": "ekt_unavailable"
-}
-```
-
-Кэшированные значения PostgreSQL в этом пути не используются. До получения реальной документации EKT также нельзя подключать преобразователь JSON или считать, что картовые endpoints существуют.
+- `POST /api/catalog/products` — upsert локальной нормализованной карточки.
+- `POST /api/catalog/index/refresh` — контролируемая загрузка adapter в индекс.
+- `GET /api/catalog/search?q=...&characteristics={...}&limit=20` — exact/text/spec search.
+- `GET /api/catalog/products/{article}/fresh` — прямые свежие details adapter.
+- `GET /api/catalog/products/{article}/current` — свежие цена/остатки/доступность без cache fallback.

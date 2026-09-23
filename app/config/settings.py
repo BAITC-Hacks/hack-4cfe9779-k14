@@ -9,9 +9,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     database_url: str
-    # WIDGET_ORIGIN is retained as a backwards-compatible single-origin fallback.
-    widget_origin: str = "http://localhost:8080"
-    cors_allowed_origins: str | None = None
+    cors_allowed_origins: str
     ekt_api_base_url: str = "https://ekt.kz/api/"
     ekt_api_username: str | None = None
     ekt_api_password: SecretStr | None = None
@@ -37,14 +35,15 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> tuple[str, ...]:
-        raw_origins = self.cors_allowed_origins or self.widget_origin
-        return tuple(dict.fromkeys(origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()))
+        return tuple(
+            dict.fromkeys(origin.strip().rstrip("/") for origin in self.cors_allowed_origins.split(",") if origin.strip())
+        )
 
     @model_validator(mode="after")
     def validate_cors_origins(self) -> "Settings":
         origins = self.cors_origins
         if not origins:
-            raise ValueError("CORS_ALLOWED_ORIGINS or WIDGET_ORIGIN must contain at least one origin")
+            raise ValueError("CORS_ALLOWED_ORIGINS must contain at least one origin")
         if "*" in origins:
             raise ValueError("Wildcard CORS origins are not allowed")
         if any(not origin.startswith(("http://", "https://")) for origin in origins):

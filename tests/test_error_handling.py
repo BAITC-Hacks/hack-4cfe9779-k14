@@ -12,19 +12,19 @@ def test_validation_errors_have_the_public_error_shape() -> None:
     assert response.json() == {"code": "validation_error", "message": "Request validation failed"}
 
 
-def test_widget_origin_is_allowed_for_browser_requests() -> None:
+def test_configured_browser_origin_is_allowed_for_browser_requests() -> None:
     with TestClient(app) as client:
         response = client.options(
             "/api/chat/sessions",
             headers={
-                "Origin": "http://localhost:8080",
+                "Origin": "http://frontend.test",
                 "Access-Control-Request-Method": "POST",
                 "Access-Control-Request-Headers": "Content-Type, Idempotency-Key",
             },
         )
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:8080"
+    assert response.headers["access-control-allow-origin"] == "http://frontend.test"
     assert "idempotency-key" in response.headers["access-control-allow-headers"].casefold()
 
 

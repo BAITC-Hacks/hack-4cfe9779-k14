@@ -23,7 +23,7 @@ The frontend needs only an API base URL, for example `https://api.example.kz`. I
 Before deploying a browser client, configure its exact origin on the API:
 
 ```dotenv
-# Comma-separated exact origins; wildcard origins are rejected.
+# Required comma-separated exact origins; wildcard origins are rejected.
 CORS_ALLOWED_ORIGINS=https://shop.example.kz,https://admin.example.kz
 ```
 

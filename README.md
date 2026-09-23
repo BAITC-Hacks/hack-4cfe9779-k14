@@ -25,7 +25,7 @@
 
 ## Что это такое
 
-**ekt.kz Product Assistant** — серверная основа для чат-виджета товарного каталога. Она изолирует LLM от фактов и операций изменения состояния: модель может только классифицировать сообщение, а поиск, актуальные сведения о товаре и подтверждение корзины выполняются контролируемыми backend-сервисами.
+**ekt.kz Product Assistant** — серверная основа для отдельно разрабатываемого интерфейса товарного каталога. Она изолирует LLM от фактов и операций изменения состояния: модель может только классифицировать сообщение, а поиск, актуальные сведения о товаре и подтверждение корзины выполняются контролируемыми backend-сервисами.
 
 Проект удобно использовать как отправную точку для интеграции с реальным каталогом ekt.kz: границы адаптеров, внутренняя модель товара, сессии, вложения, pending offers и ошибки уже определены и протестированы.
 
@@ -64,8 +64,7 @@
 
 ```mermaid
 flowchart LR
-    Browser["Браузер"] --> Widget["Chat widget"]
-    Widget --> API["FastAPI API"]
+    Browser["Отдельный frontend"] --> API["FastAPI API"]
 
     API --> Chat["ChatService"]
     Chat --> Router["Deterministic router"]
@@ -96,7 +95,6 @@ docker compose up --build
 
 | Сервис | Адрес |
 | --- | --- |
-| Чат-виджет | [http://localhost:8080](http://localhost:8080) |
 | Swagger UI | [http://localhost:8000/docs](http://localhost:8000/docs) |
 | Healthcheck | [http://localhost:8000/health](http://localhost:8000/health) |
 
@@ -114,7 +112,7 @@ docker compose down
 Для удаления локальных данных PostgreSQL используйте `docker compose down -v`.
 
 > [!NOTE]
-> Compose поднимает `db`, `api` и `widget`, а API применяет Alembic-миграции до запуска. Виджет и API доступны сразу, но товарные ответы требуют подтверждённого catalog mapper и данных источника.
+> Compose поднимает `db` и `api`, а API применяет Alembic-миграции до запуска. Browser UI в репозиторий не входит: отдельная команда подключается по [frontend integration contract](docs/frontend-integration.md). Товарные ответы требуют подтверждённого catalog mapper и данных источника.
 
 <details>
 <summary><strong>Запуск без Docker</strong></summary>
@@ -214,7 +212,6 @@ Credentials задаются только через environment variables (`EKT
 ├── alembic/              # database migrations
 ├── docs/                 # architecture and integration contracts
 ├── tests/                # unit and integration tests
-├── widget/               # static chat widget + Nginx proxy
 ├── docker-compose.yml
 └── .env.example
 ```

@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
+import './site.css'
+import { CartPage, CatalogLandingPage, CatalogPage, HomePage, SiteFooter, SiteHeader } from './Site'
 
 type Product = {
   id: string
@@ -91,13 +93,6 @@ const products: Product[] = [
   },
 ]
 
-const categories = [
-  { name: 'Кабель / Провод', count: '01', art: 'cable' as const },
-  { name: 'Светильники / Лампы', count: '02', art: 'lamp' as const },
-  { name: 'Низковольтная аппаратура', count: '03', art: 'breaker' as const },
-  { name: 'Кабеленесущие системы', count: '04', art: 'tray' as const },
-]
-
 const apiBase = (import.meta.env.VITE_ASSISTANT_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
 const price = (value: number) => new Intl.NumberFormat('ru-RU').format(value) + ' ₸'
 const safeCartUrl = (value?: string) => {
@@ -159,8 +154,11 @@ function requestedQuantity(text: string) {
   return value ? Math.max(1, Number(value)) : 1
 }
 
+type Page = 'home' | 'catalog' | 'products' | 'cart'
+const currentPage = (): Page => window.location.hash === '#cart' ? 'cart' : window.location.hash === '#products' ? 'products' : window.location.hash === '#catalog' ? 'catalog' : 'home'
+
 function App() {
-  const [route, setRoute] = useState(window.location.hash === '#cart' ? 'cart' : 'catalog')
+  const [route, setRoute] = useState<Page>(currentPage)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('Все товары')
   const [inStock, setInStock] = useState(false)
@@ -177,7 +175,7 @@ function App() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const onHash = () => setRoute(window.location.hash === '#cart' ? 'cart' : 'catalog')
+    const onHash = () => setRoute(currentPage())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -190,10 +188,6 @@ function App() {
   }, [])
 
   const cartCount = apiBase ? remoteCartCount : Object.values(cart).filter(Boolean).length
-  const filtered = products.filter(p => (category === 'Все товары' || p.category === category)
-    && (!inStock || p.stock > 0)
-    && (!query || `${p.name} ${p.sku} ${p.category}`.toLowerCase().includes(query.toLowerCase())))
-
   const append = (...items: ChatMessage[]) => setMessages(current => [...current, ...items])
   const makeProposal = (product: Product, quantity: number) => {
     const available = product.stock - (cart[product.id] || 0)
@@ -332,34 +326,48 @@ function App() {
     }
   }
 
-  const navigate = (page: 'catalog' | 'cart') => {
-    window.location.hash = page === 'cart' ? 'cart' : ''
+  const navigate = (page: Page) => {
+    window.location.hash = page === 'home' ? '' : page
     setRoute(page)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   return <>
-    <div className="demo-strip"><span>ДЕМОНСТРАЦИОННЫЙ ПРОТОТИП</span><span>Данные о цене и наличии на этой странице условные</span></div>
-    <div className="topbar"><div className="container topbar-inner"><span>⌖ &nbsp; Алматы</span><div><a href="https://ekt.kz/about/" target="_blank" rel="noreferrer">Покупателям</a><a href="https://ekt.kz/about/contacts/" target="_blank" rel="noreferrer">Контакты</a><span>ҚАЗ / РУС</span></div></div></div>
-    <header className="header"><div className="container header-inner">
-      <button className="brand" onClick={() => navigate('catalog')} aria-label="На главную демовитрины"><span className="brand-mark">E<span>K</span>T</span><span className="brand-caption">ЭЛЕКТРОКОМПЛЕКТ</span></button>
-      <button className="catalog-button" onClick={() => { navigate('catalog'); document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }) }}><Icon name="menu" size={18} /> Каталог</button>
-      <label className="search-box"><Icon name="search" size={21} /><input value={query} onChange={event => { setQuery(event.target.value); if (route === 'cart') navigate('catalog') }} placeholder="Поиск по товарам и артикулам" aria-label="Поиск по товарам" /><span className="search-hint">⌘ K</span></label>
-      <button className="header-cart" onClick={() => remoteCartUrl ? window.location.assign(remoteCartUrl) : navigate('cart')} aria-label={`Корзина, товаров ${cartCount}`}><Icon name="cart" size={23} /><span>Корзина</span><b>{cartCount}</b></button>
-    </div></header>
-
-    {route === 'catalog' ? <main>
-      <div className="container breadcrumb">Главная <span>›</span> Каталог продукции</div>
-      <section className="container hero"><div className="hero-content"><div className="hero-eyebrow"><span className="eyebrow-line" /> НОВЫЙ СПОСОБ ВЫБОРА</div><h1>Электротовары<br /><em>с подсказкой</em> эксперта</h1><p>Найдите нужную позицию, уточните наличие и сравните аналоги в одном чате.</p><button className="primary-button" onClick={() => setChatOpen(true)}><Icon name="spark" size={19} /> Спросить ассистента <Icon name="arrow" size={18} /></button><div className="hero-note"><span className="note-dot" /> Демонстрация интерфейса для HackAlem AI</div></div><div className="hero-visual"><div className="hero-grid" /><div className="hero-ring ring-one" /><div className="hero-ring ring-two" /><div className="hero-bolt">ϟ</div><div className="hero-card hero-card-one"><span>01 / ПОИСК</span><b>Найдём товар</b></div><div className="hero-card hero-card-two"><span>02 / ПОМОЩЬ</span><b>Покажем аналог</b></div></div></section>
-
-      <section className="container categories-section"><div className="section-heading"><div><span className="section-kicker">НАВИГАЦИЯ ПО МАГАЗИНУ</span><h2>Каталог продукции</h2></div><span className="section-subtitle">Быстрый путь к нужной категории</span></div><div className="category-grid">{categories.map(item => <button className={`category-card ${category === item.name ? 'selected' : ''}`} key={item.name} onClick={() => { setCategory(item.name); document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }) }}><span className="category-index">{item.count}</span><ProductArt kind={item.art} compact /><span className="category-name">{item.name}</span><span className="category-arrow">↗</span></button>)}</div></section>
-
-      <section className="catalog-section" id="catalog"><div className="container"><div className="section-heading catalog-heading"><div><span className="section-kicker">ПОДБОРКА ДЛЯ ДЕМОНСТРАЦИИ</span><h2>Товары и решения</h2></div><button className="text-button" onClick={() => { setCategory('Все товары'); setQuery(''); setInStock(false) }}>Смотреть все <Icon name="arrow" size={16} /></button></div><div className="catalog-layout"><aside className="filters"><h3>Фильтр по параметрам</h3><label className="filter-check"><span>Только в наличии</span><input type="checkbox" checked={inStock} onChange={event => setInStock(event.target.checked)} /></label><div className="filter-label">КАТЕГОРИЯ</div>{['Все товары', ...categories.map(item => item.name)].map(item => <button key={item} className={`filter-category ${category === item ? 'active' : ''}`} onClick={() => setCategory(item)}>{item}<span>{item === 'Все товары' ? products.length : products.filter(p => p.category === item).length}</span></button>)}<div className="filter-tip"><Icon name="spark" size={21} /><b>Не знаете артикул?</b><p>Опишите задачу ассистенту — он предложит подходящий товар.</p><button onClick={() => setChatOpen(true)}>Задать вопрос →</button></div></aside><div className="product-area"><div className="results-row"><span>Показано: <b>{filtered.length}</b> товара</span><span>Цены и остатки — пример для UI</span></div><div className="product-grid">{filtered.length ? filtered.map(product => <article className="product-card" key={product.id}><div className="product-topline"><span>{product.category}</span><span className={product.stock ? 'stock-label' : 'stock-label sold-out'}>{product.stock ? '● В наличии' : '○ Нет в наличии'}</span></div><ProductArt kind={product.art} /><div className="product-body"><div className="product-sku">Код товара {product.sku}</div><h3>{product.name}</h3><p>{product.specs.slice(0, 2).join(' · ')}</p><div className="product-price"><b>{price(product.price)}</b><span>/ {product.unit}</span></div><div className="product-actions"><button className="ask-button" onClick={() => openForProduct(product, 'info')}>Уточнить у ИИ</button><button className="add-button" onClick={() => openForProduct(product, product.stock ? 'add' : 'info')} aria-label={product.stock ? `Добавить ${product.name}` : `Найти аналог для ${product.name}`}><Icon name={product.stock ? 'cart' : 'spark'} size={18} /></button></div></div></article>) : <div className="empty-results"><Icon name="search" size={34} /><h3>Товары не найдены</h3><p>Измените фильтр или опишите запрос ассистенту.</p><button onClick={() => setChatOpen(true)}>Спросить ассистента</button></div>}</div></div></div></div></section>
-
-      <section className="container help-banner"><div className="help-icon"><Icon name="spark" size={29} /></div><div><span>ПОМОЩЬ В ВЫБОРЕ</span><h2>Есть спецификация или фото товара?</h2><p>Прикрепите файл в чате. В демо мы покажем интерфейс загрузки; распознавание подключается через Python-бэкенд.</p></div><button onClick={() => setChatOpen(true)}>Открыть чат <Icon name="arrow" size={18} /></button></section>
-    </main> : apiBase ? <main className="container cart-page"><div className="breadcrumb">Главная <span>›</span> Корзина</div><div className="cart-empty"><Icon name="cart" size={44} /><h2>Корзина сервера</h2><p>Ссылка на корзину появится после подтверждения товара в чате.</p><button className="primary-button" onClick={() => setChatOpen(true)}>Открыть ассистента</button></div></main> : <main className="container cart-page"><div className="breadcrumb">Главная <span>›</span> Демонстрационная корзина</div><div className="cart-page-heading"><div><span className="section-kicker">ВАШ ВЫБОР</span><h1>Корзина</h1><p>Это корзина прототипа. Она не связана с корзиной ekt.kz.</p></div><button className="text-button" onClick={() => navigate('catalog')}>← Вернуться в каталог</button></div>{Object.values(cart).some(Boolean) ? <div className="cart-layout"><div className="cart-lines">{products.filter(p => cart[p.id]).map(product => <div className="cart-line" key={product.id}><ProductArt kind={product.art} compact /><div><span>Код товара {product.sku}</span><h3>{product.name}</h3><p>{cart[product.id]} {product.unit} × {price(product.price)}</p><button className="cart-remove" onClick={() => setCart(current => { const next = { ...current }; delete next[product.id]; return next })}>Удалить позицию</button></div><b>{price(product.price * cart[product.id])}</b></div>)}</div><div className="cart-summary"><h3>Ваш заказ</h3><div><span>Позиций</span><b>{cartCount}</b></div><div><span>Итого</span><b>{price(products.reduce((total, p) => total + p.price * (cart[p.id] || 0), 0))}</b></div><p>Оформление заказа отключено в демонстрационном прототипе.</p><button className="primary-button" onClick={() => navigate('catalog')}>Продолжить выбор</button></div></div> : <div className="cart-empty"><Icon name="cart" size={44} /><h2>Корзина пока пустая</h2><p>Попросите ассистента подобрать товар и подтвердите добавление.</p><button className="primary-button" onClick={() => { navigate('catalog'); setChatOpen(true) }}>Открыть ассистента</button></div>}</main>}
-
-    <footer className="footer"><div className="container footer-inner"><div><span className="footer-logo">EKT</span><p>Прототип интерфейса ИИ-ассистента для кейса HackAlem AI.</p></div><div><b>Полезные ссылки</b><a href="https://ekt.kz/" target="_blank" rel="noreferrer">Официальный сайт ↗</a><a href="https://ekt.kz/checkout-delivery/" target="_blank" rel="noreferrer">Доставка и оплата ↗</a></div><div><b>О проекте</b><span>Демонстрационные товары и корзина</span><span>Реальная интеграция требует доступа партнёра</span></div></div></footer>
+    <SiteHeader
+      query={query}
+      cartCount={cartCount}
+      onQuery={value => { setQuery(value); if (route !== 'products') navigate('products') }}
+      onHome={() => navigate('home')}
+      onCatalog={() => navigate('catalog')}
+      onCategory={name => { setCategory(name); setQuery(''); navigate('products') }}
+      onCart={() => remoteCartUrl ? window.location.assign(remoteCartUrl) : navigate('cart')}
+    />
+    {route === 'home' ? <HomePage
+      onCategory={name => { setCategory(name); setQuery(''); navigate('products') }}
+      onAsk={() => setChatOpen(true)}
+    /> : route === 'catalog' ? <CatalogLandingPage
+      onHome={() => navigate('home')}
+      onCategory={name => { setCategory(name); setQuery(''); navigate('products') }}
+    /> : route === 'products' ? <CatalogPage
+      products={products}
+      category={category}
+      query={query}
+      inStock={inStock}
+      onCategory={setCategory}
+      onStock={setInStock}
+      onReset={() => { setCategory('Все товары'); setQuery(''); setInStock(false) }}
+      onHome={() => navigate('home')}
+      onAsk={() => setChatOpen(true)}
+      onProduct={openForProduct}
+    /> : <CartPage
+      products={products}
+      cart={cart}
+      remote={!!apiBase}
+      onRemove={id => setCart(current => { const next = { ...current }; delete next[id]; return next })}
+      onCatalog={() => navigate('catalog')}
+      onAsk={() => { navigate('catalog'); setChatOpen(true) }}
+    />}
+    <SiteFooter />
 
     {!chatOpen && <button className="chat-launcher" onClick={() => setChatOpen(true)} aria-label="Открыть ИИ-ассистента"><Icon name="spark" size={26} /><span>Спросить ассистента</span><span className="launcher-pulse" /></button>}
     {chatOpen && <section className="chat-panel" role="dialog" aria-label="ИИ-ассистент"><div className="chat-header"><div className="chat-avatar"><Icon name="spark" size={22} /></div><div><strong>ИИ-ассистент EKT</strong><span><i /> {apiBase ? 'Подключён к серверу' : 'Демо-режим'}</span></div><button onClick={() => setChatOpen(false)} aria-label="Закрыть чат"><Icon name="close" size={21} /></button></div><div className="chat-messages" aria-live="polite"><div className="chat-today">Сегодня · консультация по товарам</div>{messages.map((message, index) => <div className={`chat-message chat-message--${message.role}`} key={index}>{message.role === 'assistant' && <div className="message-avatar"><Icon name="spark" size={14} /></div>}<div className="message-content"><div className="message-bubble">{message.text}</div>{message.cards?.map(product => <div className="chat-product" key={product.id}><ProductArt kind={product.art || 'cable'} compact /><div><b>{product.name}</b><span>Код {product.sku} · {product.stock ? `${product.stock} ${product.unit} в наличии` : 'нет в наличии'}</span><button onClick={() => openForProduct(product, product.stock ? 'add' : 'info')}>{product.stock ? 'Добавить' : 'Подробнее'} →</button></div></div>)}{pending && message.proposalKey === pending.key && <div className="proposal-card"><b>Подтвердить добавление</b><span>{pending.name}</span><label>Количество {apiBase ? <strong>{pending.quantity} {pending.unit}</strong> : <><input type="number" min="1" max={pending.maxAvailable} value={pending.quantity} onChange={event => setPending(current => current && ({ ...current, quantity: Math.max(1, Math.min(current.maxAvailable || 999999, Number(event.target.value) || 1)) }))} /> {pending.unit}</>}</label><div><button className="confirm-button" disabled={busy} onClick={confirm}><Icon name="check" size={17} /> Да, добавить</button><button className="cancel-button" onClick={() => { setPending(undefined); append({ role: 'assistant', text: 'Добавление отменено. Корзина не изменилась.' }) }}>Отмена</button></div></div>}{message.cartUrl && <a className="cart-link" href={message.cartUrl} onClick={event => { if (message.cartUrl === '#cart') { event.preventDefault(); navigate('cart'); setChatOpen(false) } }}>{message.cartUrl.includes('checkout-delivery') ? 'Условия на ekt.kz' : 'Открыть корзину'} <Icon name="arrow" size={16} /></a>}</div></div>)}{busy && <div className="typing"><span /><span /><span /></div>}<div ref={endRef} /></div><div className="quick-prompts"><button onClick={() => send('Есть кабель ВВГ 3×2,5?')}>Проверить наличие</button><button onClick={() => send('Подбери аналог кабеля ВВГ')}>Подобрать аналог</button><button onClick={() => send('Какие условия доставки и оплаты?')}>Доставка и оплата</button></div><form className="chat-composer" onSubmit={event => { event.preventDefault(); void send() }}><input ref={fileRef} className="visually-hidden" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg" onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /><button type="button" className="attach-button" onClick={() => fileRef.current?.click()} aria-label="Прикрепить файл"><Icon name="clip" size={21} /></button><input value={input} onChange={event => setInput(event.target.value)} placeholder="Напишите вопрос о товаре…" aria-label="Сообщение ассистенту" /><button type="submit" className="send-button" disabled={busy || !input.trim()} aria-label="Отправить сообщение"><Icon name="send" size={19} /></button></form><div className="chat-disclaimer">Ассистент может ошибаться. Проверяйте характеристики перед покупкой.</div></section>}

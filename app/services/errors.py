@@ -18,3 +18,18 @@ class OfferConflict(ApplicationError):
 class OfferPreconditionFailed(ApplicationError):
     code = "offer_precondition_failed"
     status_code = 409
+
+
+class AttachmentTooLarge(ApplicationError):
+    code = "attachment_too_large"
+    status_code = 413
+
+
+class UnsupportedAttachment(ApplicationError):
+    code = "unsupported_attachment"
+    status_code = 415
+
+
+class AttachmentProcessingFailed(ApplicationError):
+    code = "attachment_processing_failed"
+    status_code = 422

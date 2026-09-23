@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.database import get_db
 from app.integrations.llm_client import LLMConfigurationError, OpenAICompatibleLLMClient, UnavailableLLMClient
 from app.repositories.catalog import CatalogRepository
+from app.repositories.attachments import ChatAttachmentRepository
 from app.repositories.chat import ChatRepository
 from app.schemas.chat import ChatHistoryResponse, ChatMessageCreate, ChatReply, ChatSessionCreated
 from app.services.catalog import CatalogService
@@ -26,6 +27,7 @@ async def get_chat_service(session: AsyncSession = Depends(get_db)) -> AsyncGene
             repository=ChatRepository(session),
             catalog=CatalogService(CatalogRepository(session)),
             llm=llm,
+            attachments=ChatAttachmentRepository(session),
         )
     finally:
         await llm.aclose()

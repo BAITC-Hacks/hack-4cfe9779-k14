@@ -218,6 +218,7 @@ class EktClient:
         """Refresh product details and return the verified price if supplied."""
         listed = await self.get_product_by_article(article)
         current = await self.get_product_details(listed.id)
+        self._ensure_current_product_matches_listing(listed, current)
         if current.price is None:
             raise EktDataUnavailableError("Price is not available in the current product response")
         return EktPriceCheck(article=current.article, price=current.price)
@@ -226,9 +227,16 @@ class EktClient:
         """Refresh product details and return normalized per-location stock."""
         listed = await self.get_product_by_article(article)
         current = await self.get_product_details(listed.id)
+        self._ensure_current_product_matches_listing(listed, current)
         if current.stock_by_location is None:
             raise EktDataUnavailableError("Stock is not available in the current product response")
         return EktStockCheck(article=current.article, stock_by_location=current.stock_by_location)
+
+    def _ensure_current_product_matches_listing(self, listed: EktProduct, current: EktProduct) -> None:
+        """Reject stale or malformed detail responses before reporting live data."""
+        if current.id != listed.id or current.article.strip().casefold() != listed.article.strip().casefold():
+            self._log_failure("product_mismatch", operation="product_details")
+            raise EktResponseFormatError("ekt.kz product detail does not match the requested catalog item")
 
     async def _get_json(self, operation: str, path: str, *, params: dict[str, Any]) -> Any:
         try:

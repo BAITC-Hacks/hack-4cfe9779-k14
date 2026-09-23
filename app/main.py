@@ -6,15 +6,13 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes.health import router as health_router
 from app.config.database import engine
+from app.config.logging import configure_logging
 from app.config.settings import get_settings
 from app.schemas.errors import ErrorResponse
 from app.services.errors import ApplicationError
 
 settings = get_settings()
-logging.basicConfig(
-    level=settings.log_level.upper(),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+configure_logging(settings.log_level)
 logger = logging.getLogger("chat_service")
 
 

@@ -91,3 +91,5 @@ Compose defaults предназначены для локальной разра
 ## Интеграция ekt.kz
 
 `EktClient` находится в `app/integrations/ekt_client.py`. Credentials `EKT_API_USERNAME` и `EKT_API_PASSWORD` читаются только сервером из environment/`.env`; Compose не отправляет Basic Auth в браузер. Известные GET-пути описаны в `docs/ekt-integration.md`. Формат JSON неизвестен, поэтому адаптер принимает `EktResponseMapper`, который должен быть реализован по документации партнёра. Корзина не подключена: endpoints корзины в материалах не найдены. Mock HTTP tests запускаются вместе с `pytest`.
+
+Логи приложения выводятся как JSON. Ошибки EKT содержат только тип события, операцию, HTTP-статус и тип исключения; Basic Auth, тела запросов и ответов не логируются.

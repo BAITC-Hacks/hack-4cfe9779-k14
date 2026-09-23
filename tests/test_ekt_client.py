@@ -199,3 +199,16 @@ async def test_missing_price_or_stock_is_not_fabricated(monkeypatch: pytest.Monk
             await client.check_price("A-1")
         with pytest.raises(EktDataUnavailableError):
             await client.check_stock("A-1")
+
+
+async def test_detail_must_match_the_article_found_in_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    setup_settings(monkeypatch)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/products/detail"):
+            return httpx.Response(200, json=product("wrong-article", price="1"))
+        return httpx.Response(200, json=[product("A-1")])
+
+    async with EktClient(TestMapper(), transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(EktResponseFormatError):
+            await client.check_price("A-1")

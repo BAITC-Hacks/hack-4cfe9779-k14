@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.0
     llm_timeout_seconds: float = 15.0
     llm_history_message_limit: int = 12
+    pending_offer_ttl_seconds: int = 300
+    idempotency_key_ttl_seconds: int = 86400
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

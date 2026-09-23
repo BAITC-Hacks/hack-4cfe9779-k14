@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -40,5 +41,9 @@ async def upload_chat_attachment(
         file.content_type,
         await _read_limited(file, get_settings().attachment_max_bytes),
     )
-    attachment = await attachments.store(session_id, result)
+    attachment = await attachments.store(
+        session_id,
+        result,
+        datetime.now(timezone.utc) + timedelta(seconds=get_settings().attachment_ttl_seconds),
+    )
     return ChatAttachmentView(id=attachment.id, **result.model_dump())
